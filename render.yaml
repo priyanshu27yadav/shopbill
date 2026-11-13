@@ -1,0 +1,56 @@
+# ========================================================
+# SHOPBILL v1.0 - Render.com Blueprint Specification
+# Automatic Web Service + Database Deployment on Render
+# ========================================================
+
+services:
+  # SHOPBILL Unified Web Application (React Frontend + Laravel 11 Backend)
+  - type: web
+    name: shopbill
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /
+    envVars:
+      - key: APP_NAME
+        value: ShopBill
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        generateValue: true
+      - key: SEED_DATABASE
+        value: "true"
+      # Native Render Managed Database Connection
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DB_HOST
+        fromDatabase:
+          name: shopbill-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: shopbill-db
+          property: port
+      - key: DB_DATABASE
+        fromDatabase:
+          name: shopbill-db
+          property: database
+      - key: DB_USERNAME
+        fromDatabase:
+          name: shopbill-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: shopbill-db
+          property: password
+
+# Render Managed Free Database
+databases:
+  - name: shopbill-db
+    databaseName: shopbill_db
+    user: shopbill_user
+    plan: free
+    region: oregon
