@@ -166,6 +166,45 @@ export interface Customer {
   notes?: string;
 }
 
+export interface SalesReturnItem {
+  id?: number;
+  sales_return_id?: number;
+  invoice_item_id?: number;
+  product_id?: number | null;
+  item_name: string;
+  unit: string;
+  unit_price: number;
+  gst_rate: number;
+  tax_amount: number;
+  quantity_returned: number;
+  refund_subtotal: number;
+  refund_total: number;
+}
+
+export interface SalesReturn {
+  id: number;
+  shop_id: number;
+  user_id: number;
+  invoice_id: number;
+  customer_id?: number | null;
+  return_number: string;
+  return_date: string;
+  original_invoice_number: string;
+  customer_name?: string;
+  customer_phone?: string;
+  subtotal: number;
+  tax_amount: number;
+  refund_amount: number;
+  refund_method: 'cash' | 'upi' | 'khata_adjustment' | 'store_credit';
+  reason?: string;
+  restock_inventory: boolean;
+  items?: SalesReturnItem[];
+  customer?: Customer;
+  invoice?: Invoice;
+  user?: { id: number; name: string };
+  shop?: Shop;
+}
+
 export interface InvoiceSetting {
   id: number;
   shop_id: number;

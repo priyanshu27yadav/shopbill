@@ -11,17 +11,35 @@ import {
   Printer,
   Sparkles,
   ShoppingBag,
+  RotateCcw,
+  Phone,
+  Search,
+  Wallet,
 } from 'lucide-react';
 import { dashboardApi } from '../../api';
 import { DashboardData } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { CustomerLookupModal } from '../Customers/CustomerLookupModal';
+import { SalesReturnModal } from '../Returns/SalesReturnModal';
 
 export const DashboardScreen: React.FC = () => {
   const { shop } = useAuth();
   const navigate = useNavigate();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Customer Mobile Lookup Modal
+  const [showLookupModal, setShowLookupModal] = useState(false);
+  const [targetBillingMode, setTargetBillingMode] = useState<'catalogue' | 'custom'>('catalogue');
+
+  // Sales Return Modal
+  const [showReturnModal, setShowReturnModal] = useState(false);
+  const [returnInvoiceNumber, setReturnInvoiceNumber] = useState<string>('');
+  const [returnPhone, setReturnPhone] = useState<string>('');
+
+  // Dashboard quick phone input
+  const [quickPhone, setQuickPhone] = useState('');
 
   useEffect(() => {
     loadDashboard();
@@ -39,6 +57,18 @@ export const DashboardScreen: React.FC = () => {
     }
   };
 
+  const handleStartBilling = (mode: 'catalogue' | 'custom') => {
+    setTargetBillingMode(mode);
+    setShowLookupModal(true);
+  };
+
+  const handleQuickPhoneSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickPhone.trim()) return;
+    setTargetBillingMode('catalogue');
+    setShowLookupModal(true);
+  };
+
   const currency = shop?.currency_symbol || '₹';
 
   return (
@@ -50,67 +80,116 @@ export const DashboardScreen: React.FC = () => {
             {shop?.name || 'ShopBill Counter'}
           </h1>
           <p className="text-xs text-slate-500">
-            Fast Retail Billing POS • Select an action below to start
+            Smart Retail Billing POS • Complete Customer History & Sales Return System
           </p>
         </div>
         <div className="flex items-center gap-2">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            Billing Ready
+            Billing Counter Online
           </span>
         </div>
       </div>
 
+      {/* QUICK CUSTOMER NUMBER LOOKUP BAR */}
+      <div className="bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-emerald-700/20">
+        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="space-y-1 text-center md:text-left">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-black uppercase tracking-wider">
+              <Phone className="w-3 h-3" />
+              Customer Khata & History Check
+            </div>
+            <h2 className="text-base sm:text-lg font-black tracking-tight">
+              Enter Customer Mobile to Check Shopping & Udhaar
+            </h2>
+            <p className="text-xs text-emerald-100 max-w-xl">
+              Type customer number to instantly see total purchases, previous bills count, pending udhaar, or create a new buyer account!
+            </p>
+          </div>
+
+          <form onSubmit={handleQuickPhoneSearch} className="flex items-center gap-2 w-full md:w-auto shrink-0">
+            <div className="relative flex-1 md:w-64">
+              <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">
+                +91
+              </span>
+              <input
+                type="tel"
+                placeholder="Mobile Number..."
+                value={quickPhone}
+                onChange={(e) => setQuickPhone(e.target.value)}
+                className="w-full pl-11 pr-3 py-2 text-xs font-mono font-bold rounded-xl bg-white text-slate-900 border-0 focus:outline-none focus:ring-2 focus:ring-white shadow"
+              />
+            </div>
+            <button
+              type="submit"
+              onClick={() => {
+                setTargetBillingMode('catalogue');
+                setShowLookupModal(true);
+              }}
+              className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-md transition-all shrink-0"
+            >
+              <Search className="w-4 h-4 text-emerald-400" />
+              <span>Lookup</span>
+            </button>
+          </form>
+        </div>
+      </div>
+
       {/* ============================================================ */}
-      {/* MAIN 3-4 PRIMARY ACTION CARDS AS REQUESTED BY USER           */}
-      {/* 1. Create Bill (Acc to Catalogue)                            */}
-      {/* 2. Custom Bill (Enter Any Price)                             */}
-      {/* 3. Add Product                                               */}
-      {/* 4. Today's Sales Summary                                     */}
+      {/* PRIMARY ACTION CARDS                                         */}
+      {/* 1. Create Bill (Catalogue) - prompts mobile number first     */}
+      {/* 2. Custom Bill (Enter Any Price) - prompts mobile number     */}
+      {/* 3. Sales Return / सामान वापसी (क्रेडिट नोट)                   */}
+      {/* 4. Add Product / Catalogue                                   */}
+      {/* 5. Today's Summary Card                                      */}
       {/* ============================================================ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* CARD 1: CREATE BILL (Catalogue / Acc to Bill) */}
         <div
-          onClick={() => navigate('/billing?mode=catalogue&promptBuyer=true')}
-          className="group relative bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-emerald-500/80 hover:border-emerald-600 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+          onClick={() => handleStartBilling('catalogue')}
+          className="group relative bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-emerald-500 hover:border-emerald-600 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
         >
           <div>
-            <div className="w-12 h-12 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 group-hover:scale-105 transition-transform mb-4">
-              <Receipt className="w-6 h-6" />
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 group-hover:scale-105 transition-transform">
+                <Receipt className="w-6 h-6" />
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                Mode 1 • Standard
+              </span>
             </div>
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-600">
-              Mode 1 • Standard
-            </span>
-            <h2 className="text-base font-black text-slate-900 dark:text-white mt-0.5">
+            <h2 className="text-base font-black text-slate-900 dark:text-white">
               Create Bill (Catalogue)
             </h2>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Select items from saved price list & categories. Calculates GST & discounts instantly.
+              Asks customer number first. Fetches shopping history & udhaar, or adds new customer. Uses saved prices & GST.
             </p>
           </div>
           <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-emerald-600 group-hover:text-emerald-700">
-            <span>Start Catalogue Bill</span>
+            <span>Enter Customer & Bill</span>
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </div>
         </div>
 
         {/* CARD 2: CUSTOM BILL (Personal Pricing / Enter Any Price) */}
         <div
-          onClick={() => navigate('/billing?mode=custom&promptBuyer=true')}
-          className="group relative bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-blue-500/80 hover:border-blue-600 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+          onClick={() => handleStartBilling('custom')}
+          className="group relative bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-blue-500 hover:border-blue-600 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
         >
           <div>
-            <div className="w-12 h-12 rounded-xl bg-blue-500 text-white flex items-center justify-center shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform mb-4">
-              <Edit3 className="w-6 h-6" />
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-xl bg-blue-500 text-white flex items-center justify-center shadow-md shadow-blue-500/20 group-hover:scale-105 transition-transform">
+                <Edit3 className="w-6 h-6" />
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                Mode 2 • Fast Manual
+              </span>
             </div>
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-blue-600">
-              Mode 2 • Fast Manual
-            </span>
-            <h2 className="text-base font-black text-slate-900 dark:text-white mt-0.5">
-              Custom Bill
+            <h2 className="text-base font-black text-slate-900 dark:text-white">
+              Custom Bill (Enter Any Price)
             </h2>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Quickly enter material name & price on the spot without saving to catalogue first.
+              Asks customer number first. Enter item name & custom selling price on the spot without saving to catalogue first.
             </p>
           </div>
           <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-blue-600 group-hover:text-blue-700">
@@ -119,58 +198,83 @@ export const DashboardScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* CARD 3: ADD PRODUCT */}
+        {/* CARD 3: SALES RETURN / ITEM RETURN (सामान वापसी / क्रेडिट नोट) */}
         <div
-          onClick={() => navigate('/products')}
-          className="group relative bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-amber-500/80 hover:border-amber-600 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+          onClick={() => {
+            setReturnInvoiceNumber('');
+            setReturnPhone('');
+            setShowReturnModal(true);
+          }}
+          className="group relative bg-white dark:bg-slate-900 p-5 rounded-2xl border-2 border-amber-500 hover:border-amber-600 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
         >
           <div>
-            <div className="w-12 h-12 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform mb-4">
-              <PlusCircle className="w-6 h-6" />
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform">
+                <RotateCcw className="w-6 h-6" />
+              </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                Return / Refund
+              </span>
             </div>
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-600">
-              Inventory & Items
-            </span>
-            <h2 className="text-base font-black text-slate-900 dark:text-white mt-0.5">
-              Add Product
+            <h2 className="text-base font-black text-slate-900 dark:text-white">
+              Sales Return (सामान वापसी)
             </h2>
             <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-              Add new items, units, default selling prices, and GST rates or upload PDF price list.
+              Customer bought items and wants to return? Look up previous bill, select items, refund via Cash/UPI or deduct from Udhaar, and restore stock.
             </p>
           </div>
           <div className="mt-5 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs font-bold text-amber-600 group-hover:text-amber-700">
-            <span>Manage Products</span>
+            <span>Process Return & Issue Credit Note</span>
             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </div>
         </div>
+      </div>
 
-        {/* CARD 4: TODAY'S SALES SUMMARY */}
-        <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-md flex flex-col justify-between">
+      {/* SECONDARY ROW: ADD PRODUCT & TODAY'S SUMMARY */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* ADD PRODUCT */}
+        <div
+          onClick={() => navigate('/products')}
+          className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-between"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-indigo-500 text-white flex items-center justify-center shadow-md shadow-indigo-500/20 shrink-0">
+              <PlusCircle className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                Add & Manage Products
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Add items, default prices, units, and GST or upload PDF price list.
+              </p>
+            </div>
+          </div>
+          <ArrowRight className="w-5 h-5 text-indigo-500 shrink-0 ml-2" />
+        </div>
+
+        {/* TODAY'S SALES SUMMARY CARD */}
+        <div className="bg-slate-900 text-white p-5 rounded-2xl shadow-md flex items-center justify-between">
           <div>
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 mb-1">
               <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400">
                 Today's Summary
               </span>
-              <DollarSign className="w-5 h-5 text-emerald-400" />
+              <DollarSign className="w-4 h-4 text-emerald-400" />
             </div>
-            <p className="text-xs text-slate-400">Total Sales Today</p>
-            <p className="text-2xl font-black font-mono mt-0.5 text-white">
+            <p className="text-2xl font-black font-mono text-white">
               {currency}{data ? data.today.sales.toLocaleString('en-IN') : '0'}
             </p>
-            <p className="text-xs text-emerald-400 mt-1 font-semibold">
-              {data ? data.today.bills_count : 0} bills generated today
+            <p className="text-xs text-emerald-400 mt-0.5 font-semibold">
+              {data ? data.today.bills_count : 0} bills generated today • Month: {currency}{data ? data.month.sales.toLocaleString('en-IN') : '0'}
             </p>
           </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
-            <span>Month: {currency}{data ? data.month.sales.toLocaleString('en-IN') : '0'}</span>
-            <button
-              onClick={() => navigate('/billing')}
-              className="font-bold text-emerald-400 hover:text-emerald-300"
-            >
-              Open POS &rarr;
-            </button>
-          </div>
+          <button
+            onClick={() => navigate('/reports')}
+            className="text-xs font-bold text-emerald-400 hover:text-emerald-300 underline shrink-0"
+          >
+            View Reports &rarr;
+          </button>
         </div>
       </div>
 
@@ -180,7 +284,7 @@ export const DashboardScreen: React.FC = () => {
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-emerald-600" />
             <h3 className="font-extrabold text-slate-800 dark:text-slate-100 text-sm">
-              Recent Bills
+              Recent Bills (हाल के बिल)
             </h3>
           </div>
           <button
@@ -200,7 +304,7 @@ export const DashboardScreen: React.FC = () => {
                 <th className="py-2.5 px-4">Customer</th>
                 <th className="py-2.5 px-4">Payment</th>
                 <th className="py-2.5 px-4 text-right">Amount ({currency})</th>
-                <th className="py-2.5 px-4 text-center">Action</th>
+                <th className="py-2.5 px-4 text-center">Action / Return</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -214,7 +318,12 @@ export const DashboardScreen: React.FC = () => {
                       {new Date(inv.invoice_date).toLocaleDateString('en-IN')}
                     </td>
                     <td className="py-3 px-4 font-medium text-slate-800 dark:text-slate-200">
-                      {inv.customer_name || 'Walk-in Customer'}
+                      <span className="font-bold">{inv.customer_name || 'Walk-in Customer'}</span>
+                      {inv.customer_phone && (
+                        <span className="text-[10px] text-slate-400 block font-mono">
+                          {inv.customer_phone}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
@@ -225,12 +334,26 @@ export const DashboardScreen: React.FC = () => {
                       {currency}{Number(inv.final_amount).toFixed(2)}
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => navigate('/invoices')}
-                        className="px-2 py-1 rounded text-xs font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 transition-colors"
-                      >
-                        Print / View
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => navigate('/invoices')}
+                          className="px-2 py-1 rounded text-xs font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 transition-colors"
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => {
+                            setReturnInvoiceNumber(inv.invoice_number);
+                            setReturnPhone(inv.customer_phone || '');
+                            setShowReturnModal(true);
+                          }}
+                          className="px-2 py-1 rounded text-xs font-semibold text-amber-700 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 transition-colors flex items-center gap-1"
+                          title="Return Items from this Bill"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Return</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -245,6 +368,33 @@ export const DashboardScreen: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {/* Customer Mobile Lookup & Khata Modal */}
+      {showLookupModal && (
+        <CustomerLookupModal
+          isOpen={showLookupModal}
+          onClose={() => setShowLookupModal(false)}
+          targetMode={targetBillingMode}
+          onOpenReturns={(invNum, phone) => {
+            setReturnInvoiceNumber(invNum || '');
+            setReturnPhone(phone || '');
+            setShowReturnModal(true);
+          }}
+        />
+      )}
+
+      {/* Sales Return Modal */}
+      {showReturnModal && (
+        <SalesReturnModal
+          isOpen={showReturnModal}
+          onClose={() => {
+            setShowReturnModal(false);
+            loadDashboard();
+          }}
+          initialInvoiceNumber={returnInvoiceNumber}
+          initialPhone={returnPhone}
+        />
+      )}
     </div>
   );
 };

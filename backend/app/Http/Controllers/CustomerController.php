@@ -40,6 +40,65 @@ class CustomerController extends Controller
     }
 
     /**
+     * Fast lookup of customer by phone number with ledger & shopping summary.
+     */
+    public function lookupByPhone(Request $request)
+    {
+        $shop = $request->get('current_shop');
+        $phone = trim($request->get('phone', ''));
+
+        if (empty($phone)) {
+            return response()->json(['found' => false, 'phone' => '']);
+        }
+
+        $cleanPhone = preg_replace('/[^\d]/', '', $phone);
+        $last10 = substr($cleanPhone, -10);
+
+        $customer = Customer::where('shop_id', $shop->id)
+            ->where(function ($q) use ($phone, $cleanPhone, $last10) {
+                $q->where('phone', $phone)
+                    ->orWhere('phone', $cleanPhone);
+                if (!empty($last10)) {
+                    $q->orWhere('phone', 'like', "%{$last10}%");
+                }
+            })
+            ->first();
+
+        if (!$customer) {
+            return response()->json([
+                'found' => false,
+                'phone' => $phone,
+            ]);
+        }
+
+        // Summary calculations
+        $invoicesQuery = $customer->invoices()->where('status', '!=', 'cancelled');
+        $totalShopping = floatval($invoicesQuery->sum('final_amount'));
+        $totalBills = $invoicesQuery->count();
+        $currentBalance = floatval($customer->current_balance);
+        $totalPaid = max(0, $totalShopping - $currentBalance);
+
+        $recentBills = $customer->invoices()
+            ->with(['items'])
+            ->orderBy('invoice_date', 'desc')
+            ->take(8)
+            ->get();
+
+        return response()->json([
+            'found' => true,
+            'customer' => $customer,
+            'summary' => [
+                'total_shopping' => $totalShopping,
+                'total_bills' => $totalBills,
+                'current_balance' => $currentBalance,
+                'total_paid' => $totalPaid,
+                'credit_limit' => floatval($customer->credit_limit),
+            ],
+            'recent_bills' => $recentBills,
+        ]);
+    }
+
+    /**
      * Create customer.
      */
     public function store(Request $request)

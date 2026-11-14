@@ -64,11 +64,31 @@ export const invoiceApi = {
 
 export const customerApi = {
   list: (params?: any) => apiClient.get<any>('/customers', { params }),
+  lookupByPhone: (phone: string) => apiClient.get<{
+    found: boolean;
+    phone: string;
+    customer?: Customer;
+    summary?: {
+      total_shopping: number;
+      total_bills: number;
+      current_balance: number;
+      total_paid: number;
+      credit_limit: number;
+    };
+    recent_bills?: any[];
+  }>('/customers/lookup', { params: { phone } }),
   create: (data: any) => apiClient.post<{ message: string; customer: Customer }>('/customers', data),
   get: (id: number) => apiClient.get<{ customer: Customer; invoices: Invoice[]; payments: any[] }>(`/customers/${id}`),
   update: (id: number, data: any) => apiClient.put<{ message: string; customer: Customer }>(`/customers/${id}`, data),
   collectPayment: (id: number, data: any) => apiClient.post<{ message: string; payment: any; updated_balance: number }>(`/customers/${id}/collect-payment`, data),
   delete: (id: number) => apiClient.delete(`/customers/${id}`),
+};
+
+export const salesReturnApi = {
+  list: (params?: any) => apiClient.get<any>('/sales-returns', { params }),
+  get: (id: number) => apiClient.get<{ sales_return: any }>(`/sales-returns/${id}`),
+  searchInvoice: (query: string) => apiClient.get<any[]>('/sales-returns/search-invoice', { params: { query } }),
+  create: (data: any) => apiClient.post<{ message: string; sales_return: any }>('/sales-returns', data),
 };
 
 export const paymentApi = {

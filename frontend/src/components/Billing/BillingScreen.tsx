@@ -36,6 +36,8 @@ import { Category, Product, Customer, InvoiceItem, InvoiceSetting } from '../../
 import { useAuth } from '../../context/AuthContext';
 import { useOffline } from '../../context/OfflineContext';
 import { PrintInvoiceModal } from './PrintInvoiceModal';
+import { CustomerLookupModal } from '../Customers/CustomerLookupModal';
+import { SalesReturnModal } from '../Returns/SalesReturnModal';
 
 // Pleasant Web Audio API UPI Soundbox Chime (works 100% offline, zero latency)
 const playUpiPaymentChime = () => {
@@ -104,6 +106,8 @@ export const BillingScreen: React.FC = () => {
 
   // Buyer Prompt Modal State (asks Name, Phone, Address before/during adding items)
   const [showBuyerModal, setShowBuyerModal] = useState<boolean>(false);
+  const [showPhoneLookupModal, setShowPhoneLookupModal] = useState<boolean>(false);
+  const [showSalesReturnModal, setShowSalesReturnModal] = useState<boolean>(false);
   const [buyerInputName, setBuyerInputName] = useState<string>('');
   const [buyerInputPhone, setBuyerInputPhone] = useState<string>('');
   const [buyerInputAddress, setBuyerInputAddress] = useState<string>('');
@@ -354,12 +358,31 @@ export const BillingScreen: React.FC = () => {
     if (modeParam === 'custom' || modeParam === 'catalogue') {
       setBillingMode(modeParam);
     }
-    if (searchParams.get('promptBuyer') === 'true') {
+
+    const cId = searchParams.get('customerId');
+    const cName = searchParams.get('customerName');
+    const cPhone = searchParams.get('customerPhone');
+
+    if (cId && cName) {
+      const custObj: Customer = {
+        id: Number(cId),
+        shop_id: shop?.id || 0,
+        name: cName,
+        phone: cPhone || '',
+        credit_limit: 0,
+        current_balance: 0,
+        total_purchases: 0,
+      };
+      setSelectedCustomer(custObj);
+      setCustomerName(cName);
+      setCustomerPhone(cPhone || '');
+      setShowBuyerModal(false);
+    } else if (searchParams.get('promptBuyer') === 'true') {
       setShowBuyerModal(true);
       searchParams.delete('promptBuyer');
       setSearchParams(searchParams, { replace: true });
     }
-  }, [searchParams]);
+  }, [searchParams, shop]);
 
   // Save Buyer and proceed to add items
   const handleSaveBuyerAndAddItems = async (e?: React.FormEvent) => {
@@ -777,7 +800,29 @@ export const BillingScreen: React.FC = () => {
         </div>
 
         {/* Buyer Details & Reset Quick Actions */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Quick Phone Lookup Button */}
+          <button
+            type="button"
+            onClick={() => setShowPhoneLookupModal(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-emerald-500/60 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 font-bold text-xs transition-colors shrink-0"
+            title="Check customer history, total purchases, and udhaar by mobile number"
+          >
+            <Phone className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="hidden sm:inline">Khata Lookup</span>
+          </button>
+
+          {/* Quick Sales Return Button */}
+          <button
+            type="button"
+            onClick={() => setShowSalesReturnModal(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-amber-500/60 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-950/70 text-amber-700 dark:text-amber-300 font-bold text-xs transition-colors shrink-0"
+            title="Process item return / refund from previous bill"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+            <span className="hidden sm:inline">Sales Return</span>
+          </button>
+
           <button
             type="button"
             onClick={() => {
@@ -1779,6 +1824,33 @@ export const BillingScreen: React.FC = () => {
           shop={shop}
           settings={invoiceSettings}
           onClose={() => setCompletedInvoice(null)}
+        />
+      )}
+
+      {/* Customer Mobile Lookup & Khata Modal */}
+      {showPhoneLookupModal && (
+        <CustomerLookupModal
+          isOpen={showPhoneLookupModal}
+          onClose={() => setShowPhoneLookupModal(false)}
+          targetMode={billingMode}
+          onSelectCustomer={(cust) => {
+            setSelectedCustomer(cust);
+            setCustomerName(cust.name);
+            setCustomerPhone(cust.phone || '');
+            setCustomerAddress(cust.address || '');
+            setCustomerGstin(cust.gstin || '');
+          }}
+          onOpenReturns={() => {
+            setShowSalesReturnModal(true);
+          }}
+        />
+      )}
+
+      {/* Sales Return Modal */}
+      {showSalesReturnModal && (
+        <SalesReturnModal
+          isOpen={showSalesReturnModal}
+          onClose={() => setShowSalesReturnModal(false)}
         />
       )}
     </div>

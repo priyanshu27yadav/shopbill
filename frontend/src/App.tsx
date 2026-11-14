@@ -14,6 +14,7 @@ import { PriceListUploadScreen } from './components/PriceLists/PriceListUploadSc
 import { CategoryManager } from './components/Categories/CategoryManager';
 import { InvoiceHistory } from './components/Invoices/InvoiceHistory';
 import { CustomerList } from './components/Customers/CustomerList';
+import { SalesReturnHistory } from './components/Returns/SalesReturnHistory';
 import { ReportsScreen } from './components/Reports/ReportsScreen';
 import { SettingsScreen } from './components/Settings/SettingsScreen';
 import { SuperAdminScreen } from './components/SuperAdmin/SuperAdminScreen';
@@ -61,6 +62,7 @@ export const App: React.FC = () => {
                 <Route path="/price-list-upload" element={<PriceListUploadScreen />} />
                 <Route path="/categories" element={<CategoryManager />} />
                 <Route path="/invoices" element={<InvoiceHistory />} />
+                <Route path="/returns" element={<SalesReturnHistory />} />
                 <Route path="/customers" element={<CustomerList />} />
                 <Route path="/reports" element={<ReportsScreen />} />
                 <Route path="/settings" element={<SettingsScreen />} />

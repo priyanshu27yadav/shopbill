@@ -18,6 +18,7 @@ import {
   ChevronDown,
   CheckCircle2,
   PlusCircle,
+  RotateCcw,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -45,6 +46,7 @@ export const Sidebar: React.FC = () => {
     { name: 'Upload PDF Price List', path: '/price-list-upload', icon: FileSpreadsheet, badge: 'OCR' },
     { name: 'Categories', path: '/categories', icon: FolderTree },
     { name: 'Invoice History', path: '/invoices', icon: FileText },
+    { name: 'Sales Return (वापसी)', path: '/returns', icon: RotateCcw, badge: 'Return' },
     { name: 'Customers & Udhaar', path: '/customers', icon: Users },
     { name: 'Reports', path: '/reports', icon: BarChart3, requirePerm: 'can_view_reports' },
     { name: 'Settings & Staff', path: '/settings', icon: Settings, requirePerm: 'can_manage_items' },

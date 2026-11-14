@@ -10,6 +10,7 @@ use App\Http\Controllers\PaymentController;
 use App\Http\Controllers\PriceListController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\SalesReturnController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\ShopController;
 use App\Http\Controllers\SuperAdminController;
@@ -66,7 +67,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/invoices/{id}', [InvoiceController::class, 'show']);
         Route::post('/invoices/{id}/cancel', [InvoiceController::class, 'cancel']);
 
+        // Sales Returns / Item Return / Credit Notes
+        Route::get('/sales-returns/search-invoice', [SalesReturnController::class, 'searchInvoice']);
+        Route::get('/sales-returns', [SalesReturnController::class, 'index']);
+        Route::post('/sales-returns', [SalesReturnController::class, 'store']);
+        Route::get('/sales-returns/{id}', [SalesReturnController::class, 'show']);
+
         // Customers & Udhaar Khata
+        Route::get('/customers/lookup', [CustomerController::class, 'lookupByPhone']);
         Route::get('/customers', [CustomerController::class, 'index']);
         Route::post('/customers', [CustomerController::class, 'store']);
         Route::get('/customers/{id}', [CustomerController::class, 'show']);
