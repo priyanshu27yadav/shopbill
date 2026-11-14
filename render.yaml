@@ -1,6 +1,6 @@
 # ========================================================
 # SHOPBILL v1.0 - Render.com Blueprint Specification
-# Automatic Web Service + Database Deployment on Render
+# Unified Web Application connected to Supabase PostgreSQL
 # ========================================================
 
 services:
@@ -21,36 +21,19 @@ services:
         value: "false"
       - key: APP_KEY
         generateValue: true
-      - key: SEED_DATABASE
-        value: "true"
-      # Native Render Managed Database Connection
       - key: DB_CONNECTION
         value: pgsql
       - key: DB_HOST
-        fromDatabase:
-          name: shopbill-db
-          property: host
+        value: aws-0-ap-northeast-2.pooler.supabase.com
       - key: DB_PORT
-        fromDatabase:
-          name: shopbill-db
-          property: port
+        value: "5432"
       - key: DB_DATABASE
-        fromDatabase:
-          name: shopbill-db
-          property: database
+        value: postgres
       - key: DB_USERNAME
-        fromDatabase:
-          name: shopbill-db
-          property: user
+        value: postgres.uscvhmednjgqmargftyh
       - key: DB_PASSWORD
-        fromDatabase:
-          name: shopbill-db
-          property: password
-
-# Render Managed Free Database
-databases:
-  - name: shopbill-db
-    databaseName: shopbill_db
-    user: shopbill_user
-    plan: free
-    region: oregon
+        value: "Riyan@292002"
+      - key: DB_SSLMODE
+        value: require
+      - key: SEED_DATABASE
+        value: "false"
