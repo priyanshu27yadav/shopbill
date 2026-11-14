@@ -11,6 +11,7 @@ use App\Models\SalesReturn;
 use App\Models\SalesReturnItem;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class SalesReturnController extends Controller
@@ -40,6 +41,15 @@ class SalesReturnController extends Controller
         }
         if ($request->filled('end_date')) {
             $query->whereDate('return_date', '<=', $request->end_date);
+        }
+
+        if (!$request->filled('search') && !$request->filled('start_date') && !$request->filled('end_date') && $request->integer('page', 1) === 1) {
+            $returns = Cache::remember("shop_{$shop->id}_returns_page_1", 60, function () use ($query, $request) {
+                return $query->orderBy('return_date', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->paginate($request->integer('per_page', 25));
+            });
+            return response()->json($returns);
         }
 
         $returns = $query->orderBy('return_date', 'desc')
@@ -223,6 +233,10 @@ class SalesReturnController extends Controller
                     'refund_method' => $validated['refund_method'],
                 ],
             ]);
+
+            Cache::forget("shop_{$shop->id}_dashboard_cache");
+            Cache::forget("shop_{$shop->id}_products_all");
+            Cache::forget("shop_{$shop->id}_returns_page_1");
 
             return response()->json([
                 'message' => 'Sales return processed successfully.',

@@ -32,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Shop-isolated routes
     Route::middleware('shop')->group(function () {
         // Shop profile & staff
+        Route::get('/bootstrap', [ShopController::class, 'bootstrap']);
         Route::get('/shop', [ShopController::class, 'show']);
         Route::put('/shop', [ShopController::class, 'update']);
         Route::get('/shop/staff', [ShopController::class, 'listStaff']);

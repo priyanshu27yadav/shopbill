@@ -7,6 +7,7 @@ use App\Models\InvoiceSetting;
 use App\Models\Shop;
 use App\Models\ShopSetting;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class SettingsController extends Controller
 {
@@ -17,27 +18,31 @@ class SettingsController extends Controller
     {
         $shop = $request->get('current_shop');
 
-        $shopSettings = ShopSetting::where('shop_id', $shop->id)->pluck('value', 'key');
-        $invoiceSettings = InvoiceSetting::firstOrCreate(
-            ['shop_id' => $shop->id],
-            [
-                'invoice_prefix' => 'SB-',
-                'next_invoice_number' => 1,
-                'template' => 'standard',
-                'show_gst' => $shop->is_gst_registered,
-                'show_hsn' => $shop->is_gst_registered,
-                'show_shop_logo' => true,
-                'terms_and_conditions' => "1. Goods once sold will not be returned without bill.\n2. All disputes subject to local jurisdiction.",
-                'footer_message' => 'Thank you for shopping with us! Please visit again.',
-                'show_upi_qr' => true,
-            ]
-        );
+        $data = Cache::remember("shop_{$shop->id}_settings_data", 300, function () use ($shop) {
+            $shopSettings = ShopSetting::where('shop_id', $shop->id)->pluck('value', 'key');
+            $invoiceSettings = InvoiceSetting::firstOrCreate(
+                ['shop_id' => $shop->id],
+                [
+                    'invoice_prefix' => 'SB-',
+                    'next_invoice_number' => 1,
+                    'template' => 'standard',
+                    'show_gst' => $shop->is_gst_registered,
+                    'show_hsn' => $shop->is_gst_registered,
+                    'show_shop_logo' => true,
+                    'terms_and_conditions' => "1. Goods once sold will not be returned without bill.\n2. All disputes subject to local jurisdiction.",
+                    'footer_message' => 'Thank you for shopping with us! Please visit again.',
+                    'show_upi_qr' => true,
+                ]
+            );
 
-        return response()->json([
-            'shop' => $shop,
-            'shop_settings' => $shopSettings,
-            'invoice_settings' => $invoiceSettings,
-        ]);
+            return [
+                'shop' => $shop,
+                'shop_settings' => $shopSettings,
+                'invoice_settings' => $invoiceSettings,
+            ];
+        });
+
+        return response()->json($data);
     }
 
     /**
@@ -64,6 +69,7 @@ class SettingsController extends Controller
 
         $settings = InvoiceSetting::where('shop_id', $shop->id)->firstOrFail();
         $settings->update($validated);
+        Cache::forget("shop_{$shop->id}_settings_data");
 
         AuditLog::create([
             'shop_id' => $shop->id,
@@ -100,6 +106,7 @@ class SettingsController extends Controller
 
         $settings = InvoiceSetting::where('shop_id', $shop->id)->firstOrFail();
         $settings->update(['custom_qr_url' => $url]);
+        Cache::forget("shop_{$shop->id}_settings_data");
 
         AuditLog::create([
             'shop_id' => $shop->id,
@@ -145,6 +152,8 @@ class SettingsController extends Controller
             'ip_address' => $request->ip(),
             'details' => ['updated_keys' => array_keys($validated['settings'])],
         ]);
+
+        Cache::forget("shop_{$shop->id}_settings_data");
 
         return response()->json([
             'message' => 'Shop settings saved successfully.',

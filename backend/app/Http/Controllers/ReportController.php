@@ -8,6 +8,7 @@ use App\Models\InvoiceItem;
 use App\Models\Payment;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
@@ -19,30 +20,35 @@ class ReportController extends Controller
     {
         $shop = $request->get('current_shop');
         $date = $request->filled('date') ? Carbon::parse($request->date) : Carbon::today();
+        $dateStr = $date->toDateString();
 
-        $invoices = Invoice::where('shop_id', $shop->id)
-            ->where('status', 'completed')
-            ->whereDate('invoice_date', $date)
-            ->with(['customer:id,name,phone'])
-            ->orderBy('invoice_date', 'asc')
-            ->get();
+        $data = Cache::remember("shop_{$shop->id}_report_daily_{$dateStr}", 60, function () use ($shop, $date, $dateStr) {
+            $invoices = Invoice::where('shop_id', $shop->id)
+                ->where('status', 'completed')
+                ->whereDate('invoice_date', $date)
+                ->with(['customer:id,name,phone'])
+                ->orderBy('invoice_date', 'asc')
+                ->get();
 
-        $summary = [
-            'date' => $date->toDateString(),
-            'total_bills' => $invoices->count(),
-            'total_sales' => $invoices->sum('final_amount'),
-            'total_discounts' => $invoices->sum('total_discount'),
-            'total_tax' => $invoices->sum('total_tax'),
-            'cash_sales' => $invoices->where('payment_method', 'cash')->sum('amount_paid'),
-            'upi_sales' => $invoices->where('payment_method', 'upi')->sum('amount_paid'),
-            'card_sales' => $invoices->where('payment_method', 'card')->sum('amount_paid'),
-            'credit_sales' => $invoices->sum('balance_due'),
-        ];
+            $summary = [
+                'date' => $dateStr,
+                'total_bills' => $invoices->count(),
+                'total_sales' => $invoices->sum('final_amount'),
+                'total_discounts' => $invoices->sum('total_discount'),
+                'total_tax' => $invoices->sum('total_tax'),
+                'cash_sales' => $invoices->where('payment_method', 'cash')->sum('amount_paid'),
+                'upi_sales' => $invoices->where('payment_method', 'upi')->sum('amount_paid'),
+                'card_sales' => $invoices->where('payment_method', 'card')->sum('amount_paid'),
+                'credit_sales' => $invoices->sum('balance_due'),
+            ];
 
-        return response()->json([
-            'summary' => $summary,
-            'invoices' => $invoices,
-        ]);
+            return [
+                'summary' => $summary,
+                'invoices' => $invoices,
+            ];
+        });
+
+        return response()->json($data);
     }
 
     /**

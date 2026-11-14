@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Shop;
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\Response;
 
 class IdentifyShop
@@ -24,12 +25,14 @@ class IdentifyShop
         $shopId = $request->header('X-Shop-Id') ?? $user->current_shop_id;
 
         if ($shopId) {
-            $shop = Shop::find($shopId);
+            $shop = Cache::remember("cache_shop_{$shopId}", 300, fn () => Shop::find($shopId));
 
             if ($shop) {
                 // Check if user is owner or staff
                 $isOwner = $shop->user_id === $user->id;
-                $shopUser = $shop->shopUsers()->where('user_id', $user->id)->first();
+                $shopUser = Cache::remember("cache_shopuser_{$shopId}_{$user->id}", 300, function () use ($shop, $user) {
+                    return $shop->shopUsers()->where('user_id', $user->id)->first();
+                });
 
                 if ($isOwner || $shopUser || $user->isSuperAdmin()) {
                     $request->merge([
@@ -44,10 +47,17 @@ class IdentifyShop
         }
 
         // Fallback: Check if user owns any shop or belongs to any shop
-        $firstShop = $user->ownedShops()->first() ?? $user->shops()->first();
+        $firstShop = Cache::remember("cache_user_first_shop_{$user->id}", 300, function () use ($user) {
+            return $user->ownedShops()->first() ?? $user->shops()->first();
+        });
+
         if ($firstShop) {
-            $user->update(['current_shop_id' => $firstShop->id]);
-            $shopUser = $firstShop->shopUsers()->where('user_id', $user->id)->first();
+            if ($user->current_shop_id !== $firstShop->id) {
+                $user->update(['current_shop_id' => $firstShop->id]);
+            }
+            $shopUser = Cache::remember("cache_shopuser_{$firstShop->id}_{$user->id}", 300, function () use ($firstShop, $user) {
+                return $firstShop->shopUsers()->where('user_id', $user->id)->first();
+            });
             $request->merge([
                 'current_shop' => $firstShop,
                 'current_shop_user' => $shopUser,
@@ -58,9 +68,11 @@ class IdentifyShop
         }
 
         if ($user->isSuperAdmin()) {
-            $defaultShop = Shop::first();
+            $defaultShop = Cache::remember('cache_default_shop', 300, fn () => Shop::first());
             if ($defaultShop) {
-                $user->update(['current_shop_id' => $defaultShop->id]);
+                if ($user->current_shop_id !== $defaultShop->id) {
+                    $user->update(['current_shop_id' => $defaultShop->id]);
+                }
                 $request->merge([
                     'current_shop' => $defaultShop,
                     'current_shop_user' => null,

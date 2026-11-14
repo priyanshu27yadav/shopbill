@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
 class CategoryController extends Controller
@@ -15,11 +16,13 @@ class CategoryController extends Controller
     {
         $shop = $request->get('current_shop');
 
-        $categories = Category::where('shop_id', $shop->id)
-            ->withCount('products')
-            ->orderBy('display_order', 'asc')
-            ->orderBy('name', 'asc')
-            ->get();
+        $categories = Cache::remember("shop_{$shop->id}_categories", 300, function () use ($shop) {
+            return Category::where('shop_id', $shop->id)
+                ->withCount('products')
+                ->orderBy('display_order', 'asc')
+                ->orderBy('name', 'asc')
+                ->get();
+        });
 
         return response()->json($categories);
     }
@@ -50,6 +53,8 @@ class CategoryController extends Controller
             'is_active' => true,
         ]);
 
+        Cache::forget("shop_{$shop->id}_categories");
+
         return response()->json([
             'message' => 'Category created successfully.',
             'category' => $category,
@@ -78,6 +83,7 @@ class CategoryController extends Controller
         }
 
         $category->update($validated);
+        Cache::forget("shop_{$shop->id}_categories");
 
         return response()->json([
             'message' => 'Category updated successfully.',
@@ -102,6 +108,7 @@ class CategoryController extends Controller
         }
 
         $category->delete();
+        Cache::forget("shop_{$shop->id}_categories");
 
         return response()->json(['message' => 'Category deleted successfully.']);
     }
@@ -119,6 +126,8 @@ class CategoryController extends Controller
                 ->where('id', $item['id'])
                 ->update(['display_order' => $item['display_order']]);
         }
+
+        Cache::forget("shop_{$shop->id}_categories");
 
         return response()->json(['message' => 'Categories reordered successfully.']);
     }

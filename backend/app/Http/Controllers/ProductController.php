@@ -8,6 +8,7 @@ use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\TaxRate;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class ProductController extends Controller
 {
@@ -42,6 +43,16 @@ class ProductController extends Controller
 
         // Return all if requested (for billing catalog cache)
         if ($request->boolean('all', false)) {
+            if (!$request->filled('search') && !$request->filled('category_id')) {
+                $products = Cache::remember("shop_{$shop->id}_products_all", 300, function () use ($shop) {
+                    return Product::where('shop_id', $shop->id)
+                        ->with(['category:id,name,color', 'productUnit:id,name,short_code'])
+                        ->where('is_active', true)
+                        ->orderBy('name', 'asc')
+                        ->get();
+                });
+                return response()->json($products);
+            }
             $products = $query->orderBy('name', 'asc')->get();
             return response()->json($products);
         }
@@ -107,6 +118,8 @@ class ProductController extends Controller
             'details' => ['name' => $product->name, 'price' => $product->default_price],
         ]);
 
+        Cache::forget("shop_{$shop->id}_products_all");
+
         return response()->json([
             'message' => 'Product created successfully.',
             'product' => $product->load(['category', 'productUnit']),
@@ -159,6 +172,8 @@ class ProductController extends Controller
             'details' => ['count' => count($created)],
         ]);
 
+        Cache::forget("shop_{$shop->id}_products_all");
+
         return response()->json([
             'message' => count($created) . ' products added successfully.',
             'count' => count($created),
@@ -194,6 +209,7 @@ class ProductController extends Controller
         }
 
         $product->update($validated);
+        Cache::forget("shop_{$shop->id}_products_all");
 
         return response()->json([
             'message' => 'Product updated successfully.',
@@ -210,6 +226,7 @@ class ProductController extends Controller
         $product = Product::where('shop_id', $shop->id)->where('id', $id)->firstOrFail();
 
         $product->delete();
+        Cache::forget("shop_{$shop->id}_products_all");
 
         return response()->json(['message' => 'Product deleted successfully.']);
     }
@@ -221,23 +238,27 @@ class ProductController extends Controller
     {
         $shop = $request->get('current_shop');
 
-        $units = ProductUnit::where(function ($q) use ($shop) {
-            $q->whereNull('shop_id')->orWhere('shop_id', $shop->id);
-        })->get();
+        $data = Cache::remember("shop_{$shop->id}_products_metadata", 600, function () use ($shop) {
+            $units = ProductUnit::where(function ($q) use ($shop) {
+                $q->whereNull('shop_id')->orWhere('shop_id', $shop->id);
+            })->get();
 
-        $taxRates = TaxRate::where(function ($q) use ($shop) {
-            $q->whereNull('shop_id')->orWhere('shop_id', $shop->id);
-        })->where('is_active', true)->get();
+            $taxRates = TaxRate::where(function ($q) use ($shop) {
+                $q->whereNull('shop_id')->orWhere('shop_id', $shop->id);
+            })->where('is_active', true)->get();
 
-        $categories = Category::where('shop_id', $shop->id)
-            ->where('is_active', true)
-            ->orderBy('display_order', 'asc')
-            ->get();
+            $categories = Category::where('shop_id', $shop->id)
+                ->where('is_active', true)
+                ->orderBy('display_order', 'asc')
+                ->get();
 
-        return response()->json([
-            'units' => $units,
-            'tax_rates' => $taxRates,
-            'categories' => $categories,
-        ]);
+            return [
+                'units' => $units,
+                'tax_rates' => $taxRates,
+                'categories' => $categories,
+            ];
+        });
+
+        return response()->json($data);
     }
 }

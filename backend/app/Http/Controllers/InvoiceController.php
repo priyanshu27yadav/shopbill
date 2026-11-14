@@ -13,6 +13,7 @@ use App\Models\PaymentAllocation;
 use App\Models\Product;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -59,6 +60,15 @@ class InvoiceController extends Controller
                     ->orWhere('customer_name', 'like', "%{$s}%")
                     ->orWhere('customer_phone', 'like', "%{$s}%");
             });
+        }
+
+        if (!$request->filled('start_date') && !$request->filled('end_date') && !$request->filled('status') && !$request->filled('payment_status') && !$request->filled('billing_mode') && !$request->filled('search') && $request->integer('page', 1) === 1) {
+            $invoices = Cache::remember("shop_{$shop->id}_invoices_page_1", 60, function () use ($query, $request) {
+                return $query->orderBy('invoice_date', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->paginate($request->integer('per_page', 25));
+            });
+            return response()->json($invoices);
         }
 
         $invoices = $query->orderBy('invoice_date', 'desc')
@@ -399,6 +409,10 @@ class InvoiceController extends Controller
                     'billing_mode' => $invoice->billing_mode,
                 ],
             ]);
+
+            Cache::forget("shop_{$shop->id}_dashboard_cache");
+            Cache::forget("shop_{$shop->id}_products_all");
+            Cache::forget("shop_{$shop->id}_invoices_page_1");
 
             return response()->json([
                 'message' => 'Invoice generated successfully.',

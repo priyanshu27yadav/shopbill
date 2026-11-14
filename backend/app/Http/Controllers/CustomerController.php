@@ -71,17 +71,23 @@ class CustomerController extends Controller
             ]);
         }
 
-        // Summary calculations
-        $invoicesQuery = $customer->invoices()->where('status', '!=', 'cancelled');
-        $totalShopping = floatval($invoicesQuery->sum('final_amount'));
-        $totalBills = $invoicesQuery->count();
+        // Summary calculations in single fast query
+        $stats = DB::table('invoices')
+            ->where('customer_id', $customer->id)
+            ->where('status', '!=', 'cancelled')
+            ->selectRaw('COALESCE(SUM(final_amount), 0) as total_shopping, COUNT(*) as total_bills')
+            ->first();
+
+        $totalShopping = floatval($stats->total_shopping ?? $customer->total_purchases ?? 0);
+        $totalBills = intval($stats->total_bills ?? 0);
         $currentBalance = floatval($customer->current_balance);
         $totalPaid = max(0, $totalShopping - $currentBalance);
 
         $recentBills = $customer->invoices()
-            ->with(['items'])
+            ->with(['items:id,invoice_id,product_name,quantity,unit_price,total_amount'])
+            ->select(['id', 'shop_id', 'customer_id', 'invoice_number', 'invoice_date', 'final_amount', 'amount_paid', 'balance_due', 'payment_status', 'payment_method'])
             ->orderBy('invoice_date', 'desc')
-            ->take(8)
+            ->take(6)
             ->get();
 
         return response()->json([

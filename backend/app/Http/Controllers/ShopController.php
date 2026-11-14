@@ -3,11 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
+use App\Models\Category;
+use App\Models\InvoiceSetting;
 use App\Models\Role;
 use App\Models\Shop;
+use App\Models\ShopSetting;
 use App\Models\ShopUser;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 
 class ShopController extends Controller
@@ -19,6 +23,50 @@ class ShopController extends Controller
     {
         $shop = $request->get('current_shop');
         return response()->json($shop);
+    }
+
+    /**
+     * High-speed initial bootstrap: delivers shop, user, settings, and categories in a single cached call.
+     */
+    public function bootstrap(Request $request)
+    {
+        $shop = $request->get('current_shop');
+        $user = $request->user();
+
+        $data = Cache::remember("shop_{$shop->id}_bootstrap", 300, function () use ($shop) {
+            $categories = Category::where('shop_id', $shop->id)
+                ->withCount('products')
+                ->orderBy('display_order', 'asc')
+                ->orderBy('name', 'asc')
+                ->get();
+
+            $shopSettings = ShopSetting::where('shop_id', $shop->id)->pluck('value', 'key');
+            $invoiceSettings = InvoiceSetting::firstOrCreate(['shop_id' => $shop->id], [
+                'invoice_prefix' => 'SB-',
+                'next_invoice_number' => 1,
+                'template' => 'standard',
+                'show_gst' => $shop->is_gst_registered,
+                'show_hsn' => $shop->is_gst_registered,
+                'show_shop_logo' => true,
+                'terms_and_conditions' => "1. Goods once sold will not be returned without bill.\n2. All disputes subject to local jurisdiction.",
+                'footer_message' => 'Thank you for shopping with us! Please visit again.',
+                'show_upi_qr' => true,
+            ]);
+
+            return [
+                'categories' => $categories,
+                'shop_settings' => $shopSettings,
+                'invoice_settings' => $invoiceSettings,
+            ];
+        });
+
+        return response()->json([
+            'shop' => $shop,
+            'user' => $user,
+            'categories' => $data['categories'],
+            'shop_settings' => $data['shop_settings'],
+            'invoice_settings' => $data['invoice_settings'],
+        ]);
     }
 
     /**
