@@ -11,8 +11,10 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     region: oregon
-    healthCheckPath: /
+    healthCheckPath: /api/health
     envVars:
+      - key: PORT
+        value: "10000"
       - key: APP_NAME
         value: ShopBill
       - key: APP_ENV
@@ -21,6 +23,10 @@ services:
         value: "false"
       - key: APP_KEY
         generateValue: true
+      - key: SESSION_DRIVER
+        value: cookie
+      - key: CACHE_STORE
+        value: file
       - key: DB_CONNECTION
         value: pgsql
       - key: DB_HOST

@@ -15,6 +15,9 @@ use App\Http\Controllers\ShopController;
 use App\Http\Controllers\SuperAdminController;
 use Illuminate\Support\Facades\Route;
 
+// Health check
+Route::get('/health', fn () => response()->json(['status' => 'ok', 'app' => 'ShopBill'], 200));
+
 // Public authentication routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);

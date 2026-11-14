@@ -62,12 +62,13 @@ RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cac
     && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 # Environment configuration
-ENV PORT=8000
-EXPOSE 8000
+ENV PORT=10000
+ENV PHP_CLI_SERVER_WORKERS=4
+EXPOSE 10000
 
 # Entrypoint script
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["sh", "-c", "php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]
+CMD ["sh", "-c", "php artisan serve --host=0.0.0.0 --port=${PORT:-10000} --no-reload"]

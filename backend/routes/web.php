@@ -2,6 +2,9 @@
 
 use Illuminate\Support\Facades\Route;
 
+// Dedicated lightweight health endpoint
+Route::get('/healthz', fn () => response('OK', 200)->header('Content-Type', 'text/plain'));
+
 // Production SPA Fallback Route
 Route::get('/{any?}', function () {
     $spa = public_path('index.html');
@@ -13,4 +16,4 @@ Route::get('/{any?}', function () {
         'version' => '1.0.0',
         'status' => 'API Online',
     ]);
-})->where('any', '^(?!api).*$');
+})->where('any', '^(?!api|healthz|up).*$');
