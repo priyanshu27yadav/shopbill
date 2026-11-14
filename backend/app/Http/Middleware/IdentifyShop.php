@@ -58,6 +58,16 @@ class IdentifyShop
         }
 
         if ($user->isSuperAdmin()) {
+            $defaultShop = Shop::first();
+            if ($defaultShop) {
+                $user->update(['current_shop_id' => $defaultShop->id]);
+                $request->merge([
+                    'current_shop' => $defaultShop,
+                    'current_shop_user' => null,
+                ]);
+                $request->attributes->set('shop', $defaultShop);
+                $request->attributes->set('shopUser', null);
+            }
             return $next($request);
         }
 

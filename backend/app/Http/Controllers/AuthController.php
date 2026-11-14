@@ -179,6 +179,9 @@ class AuthController extends Controller
 
         if (!$shop) {
             $shop = $user->ownedShops()->first() ?? $user->shops()->first();
+            if (!$shop && $user->isSuperAdmin()) {
+                $shop = Shop::first();
+            }
             if ($shop) {
                 $user->update(['current_shop_id' => $shop->id]);
             }
@@ -236,6 +239,9 @@ class AuthController extends Controller
 
         if (!$shop) {
             $shop = $user->ownedShops()->first() ?? $user->shops()->first();
+            if (!$shop && $user->isSuperAdmin()) {
+                $shop = Shop::first();
+            }
             if ($shop) {
                 $user->update(['current_shop_id' => $shop->id]);
             }
@@ -246,11 +252,13 @@ class AuthController extends Controller
         }
 
         // Accessible shops for dropdown switch
-        $accessibleShops = Shop::where('user_id', $user->id)
-            ->orWhereHas('shopUsers', function ($q) use ($user) {
-                $q->where('user_id', $user->id);
-            })
-            ->get(['id', 'name', 'business_type', 'city', 'phone', 'is_gst_registered']);
+        $accessibleShops = $user->isSuperAdmin()
+            ? Shop::get(['id', 'name', 'business_type', 'city', 'phone', 'is_gst_registered'])
+            : Shop::where('user_id', $user->id)
+                ->orWhereHas('shopUsers', function ($q) use ($user) {
+                    $q->where('user_id', $user->id);
+                })
+                ->get(['id', 'name', 'business_type', 'city', 'phone', 'is_gst_registered']);
 
         return response()->json([
             'user' => [
