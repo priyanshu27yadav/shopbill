@@ -119,6 +119,8 @@ class ProductController extends Controller
         ]);
 
         Cache::forget("shop_{$shop->id}_products_all");
+        Cache::forget("shop_{$shop->id}_categories");
+        Cache::forget("shop_{$shop->id}_products_metadata");
 
         return response()->json([
             'message' => 'Product created successfully.',
@@ -173,6 +175,8 @@ class ProductController extends Controller
         ]);
 
         Cache::forget("shop_{$shop->id}_products_all");
+        Cache::forget("shop_{$shop->id}_categories");
+        Cache::forget("shop_{$shop->id}_products_metadata");
 
         return response()->json([
             'message' => count($created) . ' products added successfully.',
@@ -210,6 +214,8 @@ class ProductController extends Controller
 
         $product->update($validated);
         Cache::forget("shop_{$shop->id}_products_all");
+        Cache::forget("shop_{$shop->id}_categories");
+        Cache::forget("shop_{$shop->id}_products_metadata");
 
         return response()->json([
             'message' => 'Product updated successfully.',
@@ -227,6 +233,8 @@ class ProductController extends Controller
 
         $product->delete();
         Cache::forget("shop_{$shop->id}_products_all");
+        Cache::forget("shop_{$shop->id}_categories");
+        Cache::forget("shop_{$shop->id}_products_metadata");
 
         return response()->json(['message' => 'Product deleted successfully.']);
     }

@@ -22,15 +22,23 @@ class ShopCatalogueTemplateService
                 'hindi_name' => 'इलेक्ट्रिकल दुकान',
                 'icon' => 'Zap',
                 'color' => '#f59e0b',
-                'badge' => 'Wires, Switches & Lighting',
-                'description' => 'Wires (Havells, Polycab), Switches (Anchor Roma), MCBs, LED Bulbs, Fans & Conduit Pipes.',
+                'badge' => 'Wires, Switches, Inverters & Lights',
+                'description' => 'Wires, Switches, MCBs, LED Bulbs, Inverters, Batteries, Fans, Geysers & Tools.',
                 'preview_categories' => [
                     'Wires & Cables (Havells, Polycab, Finolex)',
                     'Modular Switches & Sockets (Anchor Roma, Legrand)',
                     'LED Bulbs & Battens (Philips, Crompton)',
                     'MCBs & Distribution Boxes (Schneider, L&T)',
                     'Ceiling Fans & Appliances (Orient, Crompton)',
-                    'PVC Conduit Pipes & Insulation Tapes',
+                    'PVC Conduit Pipes & Insulation Tapes (VIP, Steelgrip)',
+                    'Decorative & Profile Lighting (Rope Light, Jhumar, COB)',
+                    'Inverters, Batteries & Solar (Luminous, Exide)',
+                    'Electrical Tools, Testers & Soldering (Taparia)',
+                    'Extension Boards & Surge Protectors (Anchor, GM)',
+                    'Doorbells & Calling Bells (Ding Dong, Mantra)',
+                    'Exhaust Fans & Ventilation (Usha, Havells)',
+                    'Geysers, Rods & Room Heaters (Bajaj, Crompton)',
+                    'Starters, Capacitors & Motor Parts (L&T, Tibcon)',
                 ],
             ],
             [
@@ -201,19 +209,35 @@ class ShopCatalogueTemplateService
         $totalProductsCreated = 0;
 
         foreach ($typeData as $catIndex => $catDef) {
-            $category = Category::create([
-                'shop_id' => $shop->id,
-                'name' => $catDef['category_name'],
-                'slug' => Str::slug($catDef['category_name']) . '-' . $shop->id . '-' . rand(100, 999),
-                'description' => $catDef['description'] ?? null,
-                'icon' => $catDef['icon'] ?? 'Package',
-                'color' => $catDef['color'] ?? '#3b82f6',
-                'display_order' => $catIndex + 1,
-                'is_active' => true,
-            ]);
+            $category = Category::where('shop_id', $shop->id)
+                ->where('name', $catDef['category_name'])
+                ->first();
+
+            if (!$category) {
+                $category = Category::create([
+                    'shop_id' => $shop->id,
+                    'name' => $catDef['category_name'],
+                    'slug' => Str::slug($catDef['category_name']) . '-' . $shop->id . '-' . rand(100, 999),
+                    'description' => $catDef['description'] ?? null,
+                    'icon' => $catDef['icon'] ?? 'Package',
+                    'color' => $catDef['color'] ?? '#3b82f6',
+                    'display_order' => $catIndex + 1,
+                    'is_active' => true,
+                ]);
+            }
+
+            // Check existing products in this category to prevent duplicate items
+            $existingProductNames = Product::where('shop_id', $shop->id)
+                ->where('category_id', $category->id)
+                ->pluck('name')
+                ->toArray();
 
             $productsToInsert = [];
             foreach ($catDef['products'] as $prodDef) {
+                if (in_array($prodDef['name'], $existingProductNames)) {
+                    continue;
+                }
+
                 $productsToInsert[] = [
                     'shop_id' => $shop->id,
                     'category_id' => $category->id,
@@ -334,6 +358,110 @@ class ShopCatalogueTemplateService
                         ['name' => 'VIP 25mm Heavy Duty PVC Conduit Pipe (3m Length)', 'unit' => 'pcs', 'price' => 65, 'mrp' => 85, 'cost_price' => 46, 'gst_rate' => 18, 'hsn_code' => '3917', 'stock' => 100],
                         ['name' => 'PVC 4-Way Round Deep Junction Box 25mm', 'unit' => 'pcs', 'price' => 18, 'mrp' => 25, 'cost_price' => 11, 'gst_rate' => 18, 'hsn_code' => '3926', 'stock' => 120],
                         ['name' => 'Anchor 3-Pin Multi Plug Top 6A/16A Adapter', 'unit' => 'pcs', 'price' => 65, 'mrp' => 85, 'cost_price' => 42, 'gst_rate' => 18, 'hsn_code' => '8536', 'stock' => 50],
+                    ],
+                ],
+                [
+                    'category_name' => 'Decorative & Profile Lighting (झूमर एवं डेकोरेटिव लाइट)',
+                    'icon' => 'Sparkles',
+                    'color' => '#d946ef',
+                    'description' => 'LED profile strips, rope lights, COB focus downlights, chandeliers and RGB fixtures',
+                    'products' => [
+                        ['name' => 'Philips 50m Waterproof Warm White LED Rope Light Roll', 'unit' => 'roll', 'price' => 1850, 'mrp' => 2400, 'gst_rate' => 12, 'hsn_code' => '9405'],
+                        ['name' => 'Aluminium Profile Channel for Strip Light (2m with Diffuser)', 'unit' => 'pcs', 'price' => 140, 'mrp' => 190, 'gst_rate' => 18, 'hsn_code' => '9405'],
+                        ['name' => '12V 5A LED Strip Light SMPS Power Adapter', 'unit' => 'pcs', 'price' => 380, 'mrp' => 520, 'gst_rate' => 18, 'hsn_code' => '8504'],
+                        ['name' => 'Luker 7W COB Deep Concealed Focus Light (Warm White)', 'unit' => 'pcs', 'price' => 320, 'mrp' => 450, 'gst_rate' => 12, 'hsn_code' => '9405'],
+                        ['name' => 'Crystal Jhumar / Chandelier 3-Tier Hanging Pendant Light', 'unit' => 'pcs', 'price' => 2850, 'mrp' => 3999, 'gst_rate' => 18, 'hsn_code' => '9405'],
+                        ['name' => 'RGB 5050 Color Changing LED Strip Light (5m with Remote)', 'unit' => 'pack', 'price' => 420, 'mrp' => 600, 'gst_rate' => 18, 'hsn_code' => '9405'],
+                    ],
+                ],
+                [
+                    'category_name' => 'Inverters, Batteries & Solar (इन्वर्टर, बैटरी एवं सोलर)',
+                    'icon' => 'BatteryCharging',
+                    'color' => '#f97316',
+                    'description' => 'Pure sine wave home inverters, tubular batteries, solar panels and phase changers',
+                    'products' => [
+                        ['name' => 'Luminous Zelio+ 1100 Pure Sine Wave Home Inverter', 'unit' => 'pcs', 'price' => 6200, 'mrp' => 7500, 'gst_rate' => 18, 'hsn_code' => '8504'],
+                        ['name' => 'Microtek Luxe 1000VA Digital Home UPS Inverter', 'unit' => 'pcs', 'price' => 5400, 'mrp' => 6700, 'gst_rate' => 18, 'hsn_code' => '8504'],
+                        ['name' => 'Luminous Red Charge RC 18000 150Ah Tall Tubular Battery', 'unit' => 'pcs', 'price' => 13500, 'mrp' => 16200, 'gst_rate' => 28, 'hsn_code' => '8507'],
+                        ['name' => 'Exide Inva Tubular IT500 150Ah Inverter Battery', 'unit' => 'pcs', 'price' => 14200, 'mrp' => 17000, 'gst_rate' => 28, 'hsn_code' => '8507'],
+                        ['name' => 'Luminous 165W 12V Polycrystalline Solar Panel', 'unit' => 'pcs', 'price' => 5800, 'mrp' => 7200, 'gst_rate' => 12, 'hsn_code' => '8541'],
+                        ['name' => 'Havells Automatic Phase Selector / Changer 32A', 'unit' => 'pcs', 'price' => 1250, 'mrp' => 1600, 'gst_rate' => 18, 'hsn_code' => '8536'],
+                    ],
+                ],
+                [
+                    'category_name' => 'Electrical Tools, Testers & Soldering (टूल्स, टेस्टर एवं सोल्डरिंग)',
+                    'icon' => 'Wrench',
+                    'color' => '#84cc16',
+                    'description' => 'Neon line testers, wire strippers, digital multimeters, soldering iron and precision screwdrivers',
+                    'products' => [
+                        ['name' => 'Taparia 814 Line Tester with High Glow Neon Bulb', 'unit' => 'pcs', 'price' => 45, 'mrp' => 60, 'gst_rate' => 18, 'hsn_code' => '9030'],
+                        ['name' => 'Taparia 8-inch Wire Stripper & Cutter (WS-05)', 'unit' => 'pcs', 'price' => 180, 'mrp' => 230, 'gst_rate' => 18, 'hsn_code' => '8203'],
+                        ['name' => 'Digital Multimeter DT-830D with Probes & Battery', 'unit' => 'pcs', 'price' => 240, 'mrp' => 350, 'gst_rate' => 18, 'hsn_code' => '9030'],
+                        ['name' => 'Soldering Iron 25W with Stand, Wire & Rosin Flux', 'unit' => 'set', 'price' => 160, 'mrp' => 220, 'gst_rate' => 18, 'hsn_code' => '8515'],
+                        ['name' => 'Taparia 6-Piece Precision Magnetic Screwdriver Set', 'unit' => 'set', 'price' => 290, 'mrp' => 380, 'gst_rate' => 18, 'hsn_code' => '8205'],
+                        ['name' => 'Heavy Duty Hot Air Gun 1800W for Heat Shrink Sleeves', 'unit' => 'pcs', 'price' => 850, 'mrp' => 1200, 'gst_rate' => 18, 'hsn_code' => '8419'],
+                    ],
+                ],
+                [
+                    'category_name' => 'Extension Boards & Surge Protectors (एक्सटेंशन बोर्ड एवं प्लग्स)',
+                    'icon' => 'Cpu',
+                    'color' => '#0ea5e9',
+                    'description' => 'Multi-socket spike guards, heavy power extension cords, conversion plugs and adapters',
+                    'products' => [
+                        ['name' => 'Anchor 4-Socket Heavy Extension Board with 4m Cord', 'unit' => 'pcs', 'price' => 320, 'mrp' => 420, 'gst_rate' => 18, 'hsn_code' => '8536'],
+                        ['name' => 'GM Modular 4+1 Power Spike Guard with Surge Protection', 'unit' => 'pcs', 'price' => 450, 'mrp' => 590, 'gst_rate' => 18, 'hsn_code' => '8536'],
+                        ['name' => 'Cona 3-Pin Heavy Duty Top Plug 16A (White)', 'unit' => 'pcs', 'price' => 45, 'mrp' => 65, 'gst_rate' => 18, 'hsn_code' => '8536'],
+                        ['name' => 'Goldmedal 2-Pin Male-Female Plug Adapter', 'unit' => 'pcs', 'price' => 25, 'mrp' => 35, 'gst_rate' => 18, 'hsn_code' => '8536'],
+                        ['name' => '16A Heavy Extension Board with DP Switch for AC / Fridge', 'unit' => 'pcs', 'price' => 580, 'mrp' => 750, 'gst_rate' => 18, 'hsn_code' => '8536'],
+                    ],
+                ],
+                [
+                    'category_name' => 'Doorbells, Calling Bells & Alarms (डोरबेल एवं अलार्म)',
+                    'icon' => 'Bell',
+                    'color' => '#a855f7',
+                    'description' => 'Dual tone ding dong bells, musical mantra bells, wireless remote doorbells and sirens',
+                    'products' => [
+                        ['name' => 'Anchor Ding Dong Dual Tone Doorbell 240V AC', 'unit' => 'pcs', 'price' => 160, 'mrp' => 220, 'gst_rate' => 18, 'hsn_code' => '8531'],
+                        ['name' => 'Cona Gayatri Mantra & Om Musical Calling Bell', 'unit' => 'pcs', 'price' => 220, 'mrp' => 290, 'gst_rate' => 18, 'hsn_code' => '8531'],
+                        ['name' => 'Goldmedal Wireless Remote Doorbell 100m Range', 'unit' => 'pcs', 'price' => 480, 'mrp' => 650, 'gst_rate' => 18, 'hsn_code' => '8531'],
+                        ['name' => 'High Pitch Siren Security Alarm Horn 12V DC', 'unit' => 'pcs', 'price' => 290, 'mrp' => 390, 'gst_rate' => 18, 'hsn_code' => '8531'],
+                    ],
+                ],
+                [
+                    'category_name' => 'Exhaust Fans & Ventilation (एग्जॉस्ट पंखे एवं वेंटिलेशन)',
+                    'icon' => 'Wind',
+                    'color' => '#14b8a6',
+                    'description' => 'Kitchen plastic exhaust fans, high speed heavy metal industrial exhaust fans and shutters',
+                    'products' => [
+                        ['name' => 'Crompton Brisk Air 6-inch High Speed Kitchen Exhaust Fan', 'unit' => 'pcs', 'price' => 890, 'mrp' => 1150, 'gst_rate' => 18, 'hsn_code' => '8414'],
+                        ['name' => 'Usha Turbo Heavy Duty 9-inch Metal Industrial Exhaust Fan', 'unit' => 'pcs', 'price' => 1550, 'mrp' => 1950, 'gst_rate' => 18, 'hsn_code' => '8414'],
+                        ['name' => 'Havells Ventil Air DB 12-inch Heavy Metal Exhaust Fan', 'unit' => 'pcs', 'price' => 2100, 'mrp' => 2650, 'gst_rate' => 18, 'hsn_code' => '8414'],
+                        ['name' => 'Fresh Air Window Louver Shutter 6-inch Plastic', 'unit' => 'pcs', 'price' => 240, 'mrp' => 320, 'gst_rate' => 18, 'hsn_code' => '8414'],
+                    ],
+                ],
+                [
+                    'category_name' => 'Geysers, Rods & Heating Appliances (गीजर, हीटर एवं रॉड्स)',
+                    'icon' => 'Flame',
+                    'color' => '#f43f5e',
+                    'description' => 'Storage water geysers 15L/25L, instant 3L geysers, fan room heaters and immersion rods',
+                    'products' => [
+                        ['name' => 'Bajaj New Shakti 15 Litre Storage Water Geyser (4 Star)', 'unit' => 'pcs', 'price' => 6400, 'mrp' => 8200, 'gst_rate' => 18, 'hsn_code' => '8516'],
+                        ['name' => 'Crompton Solarium Neo 3 Litre Instant Geyser 3000W', 'unit' => 'pcs', 'price' => 2850, 'mrp' => 3700, 'gst_rate' => 18, 'hsn_code' => '8516'],
+                        ['name' => 'Havells 2000W Fan Room Heater / Warm Air Blower', 'unit' => 'pcs', 'price' => 1650, 'mrp' => 2200, 'gst_rate' => 18, 'hsn_code' => '8516'],
+                        ['name' => 'Usha Quartz Room Heater 800W with Dual Heating Rods', 'unit' => 'pcs', 'price' => 1150, 'mrp' => 1550, 'gst_rate' => 18, 'hsn_code' => '8516'],
+                    ],
+                ],
+                [
+                    'category_name' => 'Starters, Capacitors & Motor Parts (मोटर स्टार्टर एवं कैपेसिटर)',
+                    'icon' => 'Gauge',
+                    'color' => '#6366f1',
+                    'description' => 'Submersible pump control panels, DOL starters, fan capacitors and motor starter spares',
+                    'products' => [
+                        ['name' => 'L&T Single Phase Submersible Pump Control Panel 1.5 HP', 'unit' => 'pcs', 'price' => 2450, 'mrp' => 3100, 'gst_rate' => 18, 'hsn_code' => '8537'],
+                        ['name' => 'Havells 1.0 HP Oil Immersed DOL Motor Starter', 'unit' => 'pcs', 'price' => 1450, 'mrp' => 1850, 'gst_rate' => 18, 'hsn_code' => '8536'],
+                        ['name' => 'Tibcon 2.50 MFD Fan Running Capacitor (Pack of 2)', 'unit' => 'pack', 'price' => 70, 'mrp' => 90, 'gst_rate' => 18, 'hsn_code' => '8532'],
+                        ['name' => 'Tibcon 3.15 MFD Fan Heavy Duty Capacitor', 'unit' => 'pcs', 'price' => 42, 'mrp' => 55, 'gst_rate' => 18, 'hsn_code' => '8532'],
+                        ['name' => 'EPCOS Submersible Motor Starting Capacitor 120-150 MFD', 'unit' => 'pcs', 'price' => 180, 'mrp' => 240, 'gst_rate' => 18, 'hsn_code' => '8532'],
                     ],
                 ],
             ],

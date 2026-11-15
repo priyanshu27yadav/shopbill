@@ -139,14 +139,17 @@ class CategoryController extends Controller
     {
         $shop = $request->get('current_shop');
         $validated = $request->validate([
-            'business_type' => 'required|string|in:electrical,hardware,grocery,general,mobile,laptop,sweets,cafe,clothing,medical,footwear,cosmetics,stationery,other',
+            'business_type' => 'nullable|string|in:electrical,hardware,grocery,general,mobile,laptop,sweets,cafe,clothing,medical,footwear,cosmetics,stationery,other',
         ]);
 
-        $count = \App\Services\ShopCatalogueTemplateService::seedCatalogueForShop($shop, $validated['business_type']);
+        $bType = $validated['business_type'] ?? ($shop->business_type ?: 'electrical');
+        $count = \App\Services\ShopCatalogueTemplateService::seedCatalogueForShop($shop, $bType);
+        $totalCats = Category::where('shop_id', $shop->id)->count();
 
         return response()->json([
-            'message' => "Successfully added pre-stocked catalogue with {$count} products and categories.",
+            'message' => "Successfully loaded trade catalogue! {$count} new items/categories updated.",
             'items_created' => $count,
+            'total_categories' => $totalCats,
         ]);
     }
 }
