@@ -223,7 +223,6 @@ class ShopCatalogueTemplateService
                     'unit' => $prodDef['unit'] ?? 'pcs',
                     'default_price' => $prodDef['price'],
                     'mrp' => $prodDef['mrp'] ?? $prodDef['price'],
-                    'cost_price' => $prodDef['cost_price'] ?? round($prodDef['price'] * 0.75, 2),
                     'gst_rate' => $prodDef['gst_rate'] ?? 18.00,
                     'is_tax_inclusive' => true,
                     'is_active' => true,
