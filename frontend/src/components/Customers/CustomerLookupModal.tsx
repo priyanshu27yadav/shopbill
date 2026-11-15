@@ -113,11 +113,14 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
     if (onSelectCustomer && customerToUse) {
       onSelectCustomer(customerToUse);
       onClose();
+    } else if (onSelectCustomer && !customerToUse) {
+      // Already on billing screen, just close modal without forcing a route navigation/remount
+      onClose();
     } else if (customerToUse) {
       navigate(`/billing?mode=${targetMode}&customerId=${customerToUse.id}&customerName=${encodeURIComponent(customerToUse.name)}&customerPhone=${encodeURIComponent(customerToUse.phone || '')}`);
       onClose();
     } else {
-      // Walk-in without customer
+      // Walk-in without customer from other pages
       navigate(`/billing?mode=${targetMode}`);
       onClose();
     }

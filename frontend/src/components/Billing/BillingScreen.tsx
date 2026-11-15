@@ -87,22 +87,104 @@ export const BillingScreen: React.FC = () => {
   // Small screens view tab ('items' | 'cart')
   const [mobileTab, setMobileTab] = useState<'items' | 'cart'>('items');
 
-  // Catalogue data
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  // Catalogue data with INSTANT LOCALSTORAGE CACHE INITIALIZATION (0.0ms delay)
+  const [categories, setCategories] = useState<Category[]>(() => {
+    try {
+      const cached = localStorage.getItem('shopbill_cached_categories');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const cached = localStorage.getItem('shopbill_cached_products');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [selectedCategory, setSelectedCategory] = useState<number | 'all'>('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Cart / Bill items
-  const [cartItems, setCartItems] = useState<InvoiceItem[]>([]);
+  // Cart / Bill items with AUTOMATIC PERSISTENCE across page switches & reloads
+  const [cartItems, setCartItems] = useState<InvoiceItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('shopbill_active_draft');
+      if (saved) {
+        const d = JSON.parse(saved);
+        if (Array.isArray(d.cartItems) && d.cartItems.length > 0) return d.cartItems;
+      }
+    } catch {}
+    return [];
+  });
 
-  // Customer / Buyer Details
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerAddress, setCustomerAddress] = useState('');
-  const [customerGstin, setCustomerGstin] = useState('');
+  // Customer / Buyer Details with AUTOMATIC DRAFT PERSISTENCE
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const cached = localStorage.getItem('shopbill_cached_customers');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(() => {
+    try {
+      const saved = localStorage.getItem('shopbill_active_draft');
+      if (saved) {
+        const d = JSON.parse(saved);
+        return d.selectedCustomer || null;
+      }
+    } catch {}
+    return null;
+  });
+
+  const [customerName, setCustomerName] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('shopbill_active_draft');
+      if (saved) {
+        const d = JSON.parse(saved);
+        return d.customerName || '';
+      }
+    } catch {}
+    return '';
+  });
+
+  const [customerPhone, setCustomerPhone] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('shopbill_active_draft');
+      if (saved) {
+        const d = JSON.parse(saved);
+        return d.customerPhone || '';
+      }
+    } catch {}
+    return '';
+  });
+
+  const [customerAddress, setCustomerAddress] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('shopbill_active_draft');
+      if (saved) {
+        const d = JSON.parse(saved);
+        return d.customerAddress || '';
+      }
+    } catch {}
+    return '';
+  });
+
+  const [customerGstin, setCustomerGstin] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('shopbill_active_draft');
+      if (saved) {
+        const d = JSON.parse(saved);
+        return d.customerGstin || '';
+      }
+    } catch {}
+    return '';
+  });
 
   // Buyer Prompt Modal State (asks Name, Phone, Address before/during adding items)
   const [showBuyerModal, setShowBuyerModal] = useState<boolean>(false);
@@ -149,7 +231,71 @@ export const BillingScreen: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const customNameRef = useRef<HTMLInputElement>(null);
 
-  // Load initial data
+  // Auto-save bill draft to localStorage whenever cartItems or buyer details change
+  useEffect(() => {
+    const draftKey = shop ? `shopbill_active_draft_${shop.id}` : 'shopbill_active_draft';
+    if (cartItems.length > 0 || (customerName && customerName !== 'Walk-in Customer') || customerPhone) {
+      const draft = {
+        cartItems,
+        customerName,
+        customerPhone,
+        customerAddress,
+        customerGstin,
+        selectedCustomer,
+        billingMode,
+        paymentMethod,
+        overallDiscountValue,
+        overallDiscountType,
+        billNotes,
+        updatedAt: Date.now(),
+      };
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+      localStorage.setItem('shopbill_active_draft', JSON.stringify(draft));
+    } else {
+      localStorage.removeItem(draftKey);
+      localStorage.removeItem('shopbill_active_draft');
+    }
+  }, [
+    shop,
+    cartItems,
+    customerName,
+    customerPhone,
+    customerAddress,
+    customerGstin,
+    selectedCustomer,
+    billingMode,
+    paymentMethod,
+    overallDiscountValue,
+    overallDiscountType,
+    billNotes,
+  ]);
+
+  // Restore draft when shop changes or mounts
+  useEffect(() => {
+    if (!shop) return;
+    try {
+      const key = `shopbill_active_draft_${shop.id}`;
+      const saved = localStorage.getItem(key) || localStorage.getItem('shopbill_active_draft');
+      if (saved) {
+        const d = JSON.parse(saved);
+        if (Array.isArray(d.cartItems) && d.cartItems.length > 0 && cartItems.length === 0) {
+          setCartItems(d.cartItems);
+          if (d.customerName && !customerName) setCustomerName(d.customerName);
+          if (d.customerPhone && !customerPhone) setCustomerPhone(d.customerPhone);
+          if (d.customerAddress && !customerAddress) setCustomerAddress(d.customerAddress);
+          if (d.customerGstin && !customerGstin) setCustomerGstin(d.customerGstin);
+          if (d.selectedCustomer && !selectedCustomer) setSelectedCustomer(d.selectedCustomer);
+          if (d.billingMode) setBillingMode(d.billingMode);
+          if (d.paymentMethod) setPaymentMethod(d.paymentMethod);
+          if (d.overallDiscountValue) setOverallDiscountValue(d.overallDiscountValue);
+          if (d.overallDiscountType) setOverallDiscountType(d.overallDiscountType);
+          if (d.billNotes) setBillNotes(d.billNotes);
+        }
+      }
+    } catch {}
+  }, [shop]);
+
+  // Load initial data and update local cache silently
   useEffect(() => {
     loadData();
   }, [shop]);
@@ -163,10 +309,23 @@ export const BillingScreen: React.FC = () => {
           customerApi.list({ per_page: 100 }),
           settingsApi.get(),
         ]);
-        setCategories(catRes.data || []);
-        setProducts(prodRes.data || []);
-        setCustomers(custRes.data.data || []);
-        const invSettings = setRes.data.invoice_settings || null;
+        const newCats = catRes.data || [];
+        const newProds = prodRes.data || [];
+        const newCusts = custRes.data?.data || custRes.data || [];
+
+        setCategories(newCats);
+        setProducts(newProds);
+        setCustomers(newCusts);
+
+        localStorage.setItem('shopbill_cached_categories', JSON.stringify(newCats));
+        localStorage.setItem('shopbill_cached_products', JSON.stringify(newProds));
+        localStorage.setItem('shopbill_cached_customers', JSON.stringify(newCusts));
+        if (shop) {
+          localStorage.setItem(`shopbill_categories_${shop.id}`, JSON.stringify(newCats));
+          localStorage.setItem(`shopbill_products_${shop.id}`, JSON.stringify(newProds));
+        }
+
+        const invSettings = setRes.data?.invoice_settings || null;
         setInvoiceSettings(invSettings);
         if (invSettings?.custom_qr_url) {
           setQrSource('standee');
@@ -487,6 +646,10 @@ export const BillingScreen: React.FC = () => {
     setShowQrModal(false);
     setPaymentStatus('idle');
     setAutoDetectSeconds(null);
+    if (shop) {
+      localStorage.removeItem(`shopbill_active_draft_${shop.id}`);
+    }
+    localStorage.removeItem('shopbill_active_draft');
   };
 
   // Calculations
@@ -674,6 +837,10 @@ export const BillingScreen: React.FC = () => {
       setShowQrModal(false);
       setPaymentStatus('idle');
       setAutoDetectSeconds(null);
+      if (shop) {
+        localStorage.removeItem(`shopbill_active_draft_${shop.id}`);
+      }
+      localStorage.removeItem('shopbill_active_draft');
     } catch (err: any) {
       console.error('Invoice creation failed:', err);
       alert(err.response?.data?.message || 'Failed to generate invoice. Please check fields.');
@@ -1119,6 +1286,26 @@ export const BillingScreen: React.FC = () => {
         >
           {/* Active Bill Table */}
           <div className="flex-1 overflow-y-auto p-2 sm:p-3">
+            {cartItems.length > 0 && (
+              <div className="mb-2 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-bold text-emerald-900 dark:text-emerald-200">
+                    Draft Bill: {cartItems.length} {cartItems.length === 1 ? 'item' : 'items'} saved
+                  </span>
+                  <span className="text-[11px] text-emerald-700/80 dark:text-emerald-400 hidden sm:inline">
+                    • Safely preserved across tab switches & page reloads
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleResetBill}
+                  className="text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:underline px-2 py-0.5 rounded hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                >
+                  Clear Bill
+                </button>
+              </div>
+            )}
             <div className="bg-white dark:bg-slate-900 rounded-xl shadow-xs border border-slate-200 dark:border-slate-800 overflow-hidden">
               {/* Buyer / Customer Info Strip */}
               <div className="px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">

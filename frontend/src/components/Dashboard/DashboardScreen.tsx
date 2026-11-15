@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Receipt,
   Edit3,
@@ -15,9 +15,14 @@ import {
   Phone,
   Search,
   Wallet,
+  Zap,
+  Package,
+  CheckCircle2,
+  X,
+  Plus,
 } from 'lucide-react';
-import { dashboardApi } from '../../api';
-import { DashboardData } from '../../types';
+import { dashboardApi, productApi } from '../../api';
+import { DashboardData, Product, InvoiceItem } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { CustomerLookupModal } from '../Customers/CustomerLookupModal';
@@ -38,11 +43,35 @@ export const DashboardScreen: React.FC = () => {
   const [returnInvoiceNumber, setReturnInvoiceNumber] = useState<string>('');
   const [returnPhone, setReturnPhone] = useState<string>('');
 
-  // Dashboard quick phone input
+  // Dashboard Quick Lookup Tabs: 'product' (0ms Instant Item Search) vs 'phone' (Customer Khata)
+  const [heroTab, setHeroTab] = useState<'product' | 'phone'>('product');
   const [quickPhone, setQuickPhone] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+
+  // Instant in-memory product catalog cache for 0.0ms dashboard search
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const cached = localStorage.getItem('shopbill_cached_products');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
 
   useEffect(() => {
     loadDashboard();
+    // Preload & refresh products in background for 0ms dashboard search
+    productApi
+      .list({ all: true })
+      .then((res) => {
+        const prods = Array.isArray(res.data) ? res.data : res.data?.data || [];
+        setProducts(prods);
+        localStorage.setItem('shopbill_cached_products', JSON.stringify(prods));
+        if (shop) {
+          localStorage.setItem(`shopbill_products_${shop.id}`, JSON.stringify(prods));
+        }
+      })
+      .catch((e) => console.warn('Could not refresh dashboard products:', e));
   }, [shop]);
 
   const loadDashboard = async () => {
@@ -69,6 +98,86 @@ export const DashboardScreen: React.FC = () => {
     setShowLookupModal(true);
   };
 
+  // Instant in-memory product search (0.0ms delay)
+  const dashboardSearchResults = useMemo(() => {
+    if (!productQuery.trim()) return [];
+    const q = productQuery.trim().toLowerCase();
+    return products
+      .filter((p) => {
+        return (
+          p.name.toLowerCase().includes(q) ||
+          (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+          (p.hsn_code && p.hsn_code.toLowerCase().includes(q)) ||
+          (p.category?.name && p.category.name.toLowerCase().includes(q))
+        );
+      })
+      .slice(0, 6); // Top 6 instant matches
+  }, [products, productQuery]);
+
+  // 1-Click Add Product from Dashboard directly into active Bill & redirect
+  const handleAddProductFromDashboard = (prod: Product) => {
+    try {
+      const defaultPrice = Number(prod.default_price);
+      const gstRate = Number(prod.gst_rate) || 0;
+      const key = shop ? `shopbill_active_draft_${shop.id}` : 'shopbill_active_draft';
+      const existingDraftStr = localStorage.getItem(key) || localStorage.getItem('shopbill_active_draft');
+      let currentItems: InvoiceItem[] = [];
+      let draftData: any = {};
+
+      if (existingDraftStr) {
+        try {
+          draftData = JSON.parse(existingDraftStr);
+          if (Array.isArray(draftData.cartItems)) {
+            currentItems = draftData.cartItems;
+          }
+        } catch {}
+      }
+
+      // Check if already in draft
+      const idx = currentItems.findIndex((it) => it.product_id === prod.id);
+      if (idx > -1) {
+        currentItems[idx].quantity += 1;
+        const subtotal = currentItems[idx].quantity * currentItems[idx].unit_price;
+        currentItems[idx].subtotal = subtotal;
+        currentItems[idx].total_amount = subtotal;
+      } else {
+        const subtotal = 1 * defaultPrice;
+        currentItems.push({
+          product_id: prod.id,
+          item_name: prod.name,
+          category_name: prod.category?.name || 'General',
+          is_custom_item: false,
+          unit: prod.unit || 'pcs',
+          quantity: 1,
+          unit_price: defaultPrice,
+          discount_type: 'fixed',
+          discount_value: 0,
+          discount_amount: 0,
+          subtotal,
+          gst_rate: gstRate,
+          hsn_code: prod.hsn_code,
+          total_amount: subtotal,
+        });
+      }
+
+      const updatedDraft = {
+        ...draftData,
+        cartItems: currentItems,
+        billingMode: 'catalogue',
+        updatedAt: Date.now(),
+      };
+
+      localStorage.setItem(key, JSON.stringify(updatedDraft));
+      localStorage.setItem('shopbill_active_draft', JSON.stringify(updatedDraft));
+
+      // Navigate to billing screen with item already preserved in cart!
+      navigate('/billing?mode=catalogue');
+    } catch (err) {
+      console.error('Error adding product from dashboard:', err);
+      navigate('/billing?mode=catalogue');
+    }
+  };
+
   const currency = shop?.currency_symbol || '₹';
 
   return (
@@ -80,7 +189,7 @@ export const DashboardScreen: React.FC = () => {
             {shop?.name || 'ShopBill Counter'}
           </h1>
           <p className="text-xs text-slate-500">
-            Smart Retail Billing POS • Complete Customer History & Sales Return System
+            Smart Retail Billing POS • Instant Item Search • Complete Customer History & Sales Return System
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -91,48 +200,173 @@ export const DashboardScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* QUICK CUSTOMER NUMBER LOOKUP BAR */}
-      <div className="bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-emerald-700/20">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="space-y-1 text-center md:text-left">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-black uppercase tracking-wider">
-              <Phone className="w-3 h-3" />
-              Customer Khata & History Check
-            </div>
-            <h2 className="text-base sm:text-lg font-black tracking-tight">
-              Enter Customer Mobile to Check Shopping & Udhaar
-            </h2>
-            <p className="text-xs text-emerald-100 max-w-xl">
-              Type customer number to instantly see total purchases, previous bills count, pending udhaar, or create a new buyer account!
-            </p>
-          </div>
-
-          <form onSubmit={handleQuickPhoneSearch} className="flex items-center gap-2 w-full md:w-auto shrink-0">
-            <div className="relative flex-1 md:w-64">
-              <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">
-                +91
-              </span>
-              <input
-                type="tel"
-                placeholder="Mobile Number..."
-                value={quickPhone}
-                onChange={(e) => setQuickPhone(e.target.value)}
-                className="w-full pl-11 pr-3 py-2 text-xs font-mono font-bold rounded-xl bg-white text-slate-900 border-0 focus:outline-none focus:ring-2 focus:ring-white shadow"
-              />
-            </div>
-            <button
-              type="submit"
-              onClick={() => {
-                setTargetBillingMode('catalogue');
-                setShowLookupModal(true);
-              }}
-              className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-md transition-all shrink-0"
-            >
-              <Search className="w-4 h-4 text-emerald-400" />
-              <span>Lookup</span>
-            </button>
-          </form>
+      {/* QUICK DUAL COUNTER: INSTANT PRODUCT SEARCH & CUSTOMER KHATA LOOKUP */}
+      <div className="bg-gradient-to-r from-emerald-600 via-emerald-700 to-teal-800 rounded-3xl p-4 sm:p-5 text-white shadow-xl shadow-emerald-700/20 space-y-3">
+        {/* Tab Switcher */}
+        <div className="flex items-center gap-2 border-b border-white/20 pb-2.5">
+          <button
+            type="button"
+            onClick={() => setHeroTab('product')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${
+              heroTab === 'product'
+                ? 'bg-white text-emerald-900 shadow-md scale-102'
+                : 'bg-white/15 text-emerald-100 hover:bg-white/25'
+            }`}
+          >
+            <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
+            <span>⚡ Instant Item Search (सर्च सामान)</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setHeroTab('phone')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${
+              heroTab === 'phone'
+                ? 'bg-white text-emerald-900 shadow-md scale-102'
+                : 'bg-white/15 text-emerald-100 hover:bg-white/25'
+            }`}
+          >
+            <Phone className="w-3.5 h-3.5" />
+            <span>📱 Customer Mobile / Khata Lookup</span>
+          </button>
         </div>
+
+        {heroTab === 'product' ? (
+          /* TAB 1: 0ms INSTANT ITEM SEARCH ON DASHBOARD */
+          <div className="space-y-3">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-3">
+              <div className="space-y-0.5 text-center md:text-left">
+                <h2 className="text-base sm:text-lg font-black tracking-tight flex items-center gap-2 justify-center md:justify-start">
+                  <span>Fast Item & Price Search</span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40">
+                    0ms Instant
+                  </span>
+                </h2>
+                <p className="text-xs text-emerald-100">
+                  Search any item by brand or name (e.g. Havells, Anchor, Wire, Switch) to see price or 1-click add to bill!
+                </p>
+              </div>
+
+              <div className="relative w-full md:w-80 shrink-0">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Type item name or brand..."
+                  value={productQuery}
+                  onChange={(e) => setProductQuery(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 text-xs font-bold rounded-xl bg-white text-slate-900 border-0 focus:outline-none focus:ring-2 focus:ring-amber-300 shadow"
+                />
+                {productQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setProductQuery('')}
+                    className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Instant Search Results Dropdown/Grid */}
+            {productQuery.trim() && (
+              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-2xl p-3 border border-white/30 text-slate-900 dark:text-white shadow-2xl space-y-2 animate-in fade-in duration-150">
+                <div className="flex items-center justify-between text-xs font-bold text-slate-500 pb-1 border-b border-slate-200 dark:border-slate-800">
+                  <span>Found {dashboardSearchResults.length} match(es)</span>
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                    Click "+ Add to Bill" to start/continue billing immediately
+                  </span>
+                </div>
+
+                {dashboardSearchResults.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-400">
+                    No products matching "{productQuery}". Try searching another name or brand.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {dashboardSearchResults.map((prod) => (
+                      <div
+                        key={prod.id}
+                        className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 flex items-center justify-between gap-2 hover:border-emerald-500 transition-all"
+                      >
+                        <div className="overflow-hidden">
+                          <p className="text-xs font-extrabold text-slate-900 dark:text-slate-100 truncate">
+                            {prod.name}
+                          </p>
+                          <p className="text-[10px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                            <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                              {prod.category?.name || 'General'}
+                            </span>
+                            <span>• /{prod.unit}</span>
+                            {Number(prod.gst_rate) > 0 && <span>• {prod.gst_rate}% GST</span>}
+                          </p>
+                        </div>
+
+                        <div className="text-right shrink-0 flex items-center gap-2">
+                          <div>
+                            <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                              {currency}{Number(prod.default_price).toLocaleString('en-IN')}
+                            </span>
+                            {prod.mrp && Number(prod.mrp) > Number(prod.default_price) && (
+                              <p className="text-[10px] text-slate-400 line-through">
+                                {currency}{Number(prod.mrp).toLocaleString('en-IN')}
+                              </p>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleAddProductFromDashboard(prod)}
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-1 shrink-0 active:scale-95 transition-transform"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* TAB 2: CUSTOMER KHATA & HISTORY LOOKUP */
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="space-y-1 text-center md:text-left">
+              <h2 className="text-base sm:text-lg font-black tracking-tight">
+                Enter Customer Mobile to Check Shopping & Udhaar
+              </h2>
+              <p className="text-xs text-emerald-100 max-w-xl">
+                Type customer number to instantly see total purchases, previous bills count, pending udhaar, or create a new buyer account!
+              </p>
+            </div>
+
+            <form onSubmit={handleQuickPhoneSearch} className="flex items-center gap-2 w-full md:w-auto shrink-0">
+              <div className="relative flex-1 md:w-64">
+                <span className="absolute left-3 top-2.5 text-xs font-bold text-slate-400">
+                  +91
+                </span>
+                <input
+                  type="tel"
+                  placeholder="Mobile Number..."
+                  value={quickPhone}
+                  onChange={(e) => setQuickPhone(e.target.value)}
+                  className="w-full pl-11 pr-3 py-2 text-xs font-mono font-bold rounded-xl bg-white text-slate-900 border-0 focus:outline-none focus:ring-2 focus:ring-white shadow"
+                />
+              </div>
+              <button
+                type="submit"
+                onClick={() => {
+                  setTargetBillingMode('catalogue');
+                  setShowLookupModal(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-md transition-all shrink-0"
+              >
+                <Search className="w-4 h-4 text-emerald-400" />
+                <span>Lookup</span>
+              </button>
+            </form>
+          </div>
+        )}
       </div>
 
       {/* ============================================================ */}
