@@ -10,6 +10,10 @@ import {
   XCircle,
   Clock,
   Share2,
+  Package,
+  Loader2,
+  Receipt,
+  User,
 } from 'lucide-react';
 import { invoiceApi, settingsApi } from '../../api';
 import { Invoice, InvoiceSetting } from '../../types';
@@ -26,6 +30,7 @@ export const InvoiceHistory: React.FC = () => {
 
   // Modals
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [loadingInvoiceId, setLoadingInvoiceId] = useState<number | null>(null);
   const [invoiceSettings, setInvoiceSettings] = useState<InvoiceSetting | null>(null);
   const [cancellingInvoice, setCancellingInvoice] = useState<Invoice | null>(null);
   const [cancelReason, setCancelReason] = useState('');
@@ -46,6 +51,44 @@ export const InvoiceHistory: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // View full invoice with all items list identical to bill generated one
+  const handleViewInvoice = async (inv: Invoice) => {
+    // If already has items populated, view immediately
+    if (inv.items && inv.items.length > 0) {
+      setSelectedInvoice(inv);
+      return;
+    }
+
+    setLoadingInvoiceId(inv.id);
+    try {
+      const res = await invoiceApi.get(inv.id);
+      setSelectedInvoice(res.data.invoice);
+      if (res.data.settings) {
+        setInvoiceSettings(res.data.settings);
+      }
+    } catch (e) {
+      console.error('Error fetching full invoice items:', e);
+      setSelectedInvoice(inv);
+    } finally {
+      setLoadingInvoiceId(null);
+    }
+  };
+
+  const handleWhatsAppQuickShare = (inv: Invoice, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const phone = inv.customer_phone ? inv.customer_phone.replace(/\D/g, '') : '';
+    const text = encodeURIComponent(
+      `Hello ${inv.customer_name || 'Customer'},\nThank you for shopping at *${shop?.name}*!\n\n` +
+      `*Bill No:* ${inv.invoice_number}\n` +
+      `*Date:* ${new Date(inv.invoice_date).toLocaleDateString('en-IN')}\n` +
+      `*Total Amount:* Rs. ${Number(inv.final_amount).toFixed(2)}\n` +
+      `*Payment:* ${inv.payment_method?.toUpperCase()} (${inv.payment_status?.toUpperCase()})\n` +
+      (Number(inv.balance_due) > 0 ? `*Balance Due (Udhaar):* Rs. ${Number(inv.balance_due).toFixed(2)}\n` : `*Status:* Paid\n`) +
+      `\nWe appreciate your business!`
+    );
+    window.open(`https://wa.me/${phone ? '91' + phone : ''}?text=${text}`, '_blank');
   };
 
   const handleOpenCancel = (inv: Invoice) => {
@@ -84,15 +127,15 @@ export const InvoiceHistory: React.FC = () => {
   const currency = shop?.currency_symbol || '₹';
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200 dark:border-slate-800">
         <div>
           <h1 className="text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
             <FileText className="w-5 h-5 text-emerald-600" />
-            <span>Invoice & Billing History</span>
+            <span>Invoice & Billing History (बिल हिस्ट्री)</span>
           </h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            View, reprint receipts, share on WhatsApp, or record official invoice cancellations.
+            Click any invoice to view the complete bill with all item details, prices, taxes & print receipt.
           </p>
         </div>
       </div>
@@ -106,7 +149,7 @@ export const InvoiceHistory: React.FC = () => {
             placeholder="Search by invoice number, customer name or phone..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 dark:text-white"
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none"
           />
         </div>
 
@@ -116,7 +159,7 @@ export const InvoiceHistory: React.FC = () => {
           className="px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 dark:text-white"
         >
           <option value="all">All Statuses</option>
-          <option value="completed">Completed</option>
+          <option value="completed">Completed (Valid)</option>
           <option value="cancelled">Cancelled</option>
         </select>
 
@@ -126,8 +169,8 @@ export const InvoiceHistory: React.FC = () => {
           className="px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 dark:text-white"
         >
           <option value="all">All Modes</option>
-          <option value="catalogue">1. Catalogue</option>
-          <option value="custom">2. Custom / Personal</option>
+          <option value="catalogue">1. Catalogue Bill</option>
+          <option value="custom">2. Custom / Personal Bill</option>
         </select>
       </div>
 
@@ -139,9 +182,10 @@ export const InvoiceHistory: React.FC = () => {
               <tr className="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold uppercase text-slate-500">
                 <th className="py-3 px-4">Invoice #</th>
                 <th className="py-3 px-4">Date & Time</th>
-                <th className="py-3 px-4">Customer</th>
+                <th className="py-3 px-4">Buyer / Customer</th>
+                <th className="py-3 px-4">Items in Bill</th>
                 <th className="py-3 px-4">Mode</th>
-                <th className="py-3 px-4 text-right">Amount</th>
+                <th className="py-3 px-4 text-right">Final Amount</th>
                 <th className="py-3 px-4 text-center">Payment</th>
                 <th className="py-3 px-4 text-center">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -150,93 +194,126 @@ export const InvoiceHistory: React.FC = () => {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
-                    Loading invoices...
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                    <Loader2 className="w-6 h-6 animate-spin text-emerald-500 mx-auto mb-2" />
+                    <span>Loading invoices...</span>
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                  <td colSpan={9} className="py-12 text-center text-slate-400">
                     No invoices found.
                   </td>
                 </tr>
               ) : (
-                filtered.map((inv) => (
-                  <tr
-                    key={inv.id}
-                    className={`hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition-colors ${
-                      inv.status === 'cancelled' ? 'opacity-60 bg-slate-50/50' : ''
-                    }`}
-                  >
-                    <td className="py-3 px-4 font-bold font-mono text-slate-900 dark:text-white">
-                      {inv.invoice_number}
-                    </td>
-                    <td className="py-3 px-4 text-slate-500 font-mono">
-                      {new Date(inv.invoice_date).toLocaleString('en-IN', {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      })}
-                    </td>
-                    <td className="py-3 px-4">
-                      <p className="font-semibold text-slate-800 dark:text-slate-100">
-                        {inv.customer_name || 'Cash Customer'}
-                      </p>
-                      {inv.customer_phone && <p className="text-[10px] text-slate-400 font-mono">{inv.customer_phone}</p>}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 capitalize">
-                        {inv.billing_mode}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-right font-extrabold font-mono text-slate-900 dark:text-white">
-                      {currency}{Number(inv.final_amount).toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      <span
-                        className={`text-[9px] font-bold px-2 py-0.5 rounded uppercase ${
-                          inv.payment_status === 'paid'
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                            : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                        }`}
-                      >
-                        {inv.payment_method} • {inv.payment_status}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center">
-                      {inv.status === 'completed' ? (
-                        <span className="text-emerald-600 font-semibold flex items-center justify-center gap-1">
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          <span>Valid</span>
-                        </span>
-                      ) : (
-                        <span className="text-rose-600 font-semibold flex items-center justify-center gap-1">
-                          <XCircle className="w-3.5 h-3.5" />
-                          <span>Cancelled</span>
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => setSelectedInvoice(inv)}
-                          title="View & Reprint Receipt"
-                          className="p-1.5 text-slate-500 hover:text-emerald-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </button>
-                        {inv.status === 'completed' && permissions.can_cancel_bills && (
-                          <button
-                            onClick={() => handleOpenCancel(inv)}
-                            title="Cancel Bill with Credit Note"
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          >
-                            <Ban className="w-4 h-4" />
-                          </button>
+                filtered.map((inv) => {
+                  const isRowLoading = loadingInvoiceId === inv.id;
+                  const itemsCount = inv.items?.length || 0;
+                  return (
+                    <tr
+                      key={inv.id}
+                      onClick={() => handleViewInvoice(inv)}
+                      className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 cursor-pointer transition-colors ${
+                        inv.status === 'cancelled' ? 'opacity-60 bg-slate-50/50' : ''
+                      }`}
+                    >
+                      <td className="py-3 px-4 font-bold font-mono text-emerald-600 dark:text-emerald-400 hover:underline">
+                        <div className="flex items-center gap-1.5">
+                          {isRowLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                          <span>{inv.invoice_number}</span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-slate-500 font-mono">
+                        {new Date(inv.invoice_date).toLocaleString('en-IN', {
+                          dateStyle: 'medium',
+                          timeStyle: 'short',
+                        })}
+                      </td>
+                      <td className="py-3 px-4">
+                        <p className="font-bold text-slate-900 dark:text-slate-100">
+                          {inv.customer_name || 'Walk-in Customer'}
+                        </p>
+                        {inv.customer_phone && (
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">📞 {inv.customer_phone}</p>
                         )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60">
+                          <Package className="w-3.5 h-3.5" />
+                          <span>{itemsCount} {itemsCount === 1 ? 'item' : 'items'}</span>
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 capitalize">
+                          {inv.billing_mode}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right font-extrabold font-mono text-slate-900 dark:text-white">
+                        {currency}{Number(inv.final_amount).toFixed(2)}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
+                            inv.payment_status === 'paid'
+                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                          }`}
+                        >
+                          {inv.payment_method} • {inv.payment_status}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        {inv.status === 'completed' ? (
+                          <span className="text-emerald-600 font-semibold flex items-center justify-center gap-1">
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            <span>Valid</span>
+                          </span>
+                        ) : (
+                          <span className="text-rose-600 font-semibold flex items-center justify-center gap-1">
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Cancelled</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleViewInvoice(inv)}
+                            title="View Full Bill & Print Receipt"
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 rounded-lg border border-emerald-200 dark:border-emerald-800 transition-colors"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">View Bill</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleWhatsAppQuickShare(inv, e)}
+                            title="Share on WhatsApp"
+                            className="p-1.5 text-slate-500 hover:text-emerald-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          {inv.status === 'completed' && permissions.can_cancel_bills && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenCancel(inv);
+                              }}
+                              title="Cancel Bill with Credit Note"
+                              className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

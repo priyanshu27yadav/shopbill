@@ -27,7 +27,13 @@ class InvoiceController extends Controller
         $shop = $request->get('current_shop');
 
         $query = Invoice::where('shop_id', $shop->id)
-            ->with(['customer:id,name,phone', 'user:id,name']);
+            ->with([
+                'items',
+                'customer:id,name,phone,address,gstin',
+                'user:id,name',
+                'payments',
+                'shop:id,name,tagline,address_line1,address_line2,city,state,pincode,phone,email,gstin,logo_url,currency_symbol,is_gst_registered',
+            ]);
 
         // Filter by date range
         if ($request->filled('start_date')) {
