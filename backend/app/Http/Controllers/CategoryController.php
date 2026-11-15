@@ -131,4 +131,22 @@ class CategoryController extends Controller
 
         return response()->json(['message' => 'Categories reordered successfully.']);
     }
+
+    /**
+     * Apply a pre-built industry category & products template to current shop.
+     */
+    public function applyTemplate(Request $request)
+    {
+        $shop = $request->get('current_shop');
+        $validated = $request->validate([
+            'business_type' => 'required|string|in:electrical,hardware,grocery,general,mobile,laptop,sweets,cafe,clothing,medical,footwear,cosmetics,stationery,other',
+        ]);
+
+        $count = \App\Services\ShopCatalogueTemplateService::seedCatalogueForShop($shop, $validated['business_type']);
+
+        return response()->json([
+            'message' => "Successfully added pre-stocked catalogue with {$count} products and categories.",
+            'items_created' => $count,
+        ]);
+    }
 }

@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Route;
 Route::get('/health', fn () => response()->json(['status' => 'ok', 'app' => 'ShopBill'], 200));
 
 // Public authentication routes
+Route::get('/business-types', [AuthController::class, 'businessTypes']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 
@@ -43,6 +44,7 @@ Route::middleware('auth:sanctum')->group(function () {
         // Categories
         Route::get('/categories', [CategoryController::class, 'index']);
         Route::post('/categories', [CategoryController::class, 'store']);
+        Route::post('/categories/apply-template', [CategoryController::class, 'applyTemplate']);
         Route::put('/categories/{id}', [CategoryController::class, 'update']);
         Route::delete('/categories/{id}', [CategoryController::class, 'destroy']);
         Route::post('/categories/reorder', [CategoryController::class, 'reorder']);

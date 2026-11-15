@@ -12,8 +12,9 @@ import {
 } from '../types';
 
 export const authApi = {
+  getBusinessTypes: () => apiClient.get<any[]>('/business-types'),
   login: (data: any) => apiClient.post<{ message: string; token: string; user: User; shop: Shop; permissions: any }>('/login', data),
-  register: (data: any) => apiClient.post<{ message: string; token: string; user: User; shop: Shop; permissions: any }>('/register', data),
+  register: (data: any) => apiClient.post<{ message: string; token: string; user: User; shop: Shop; permissions: any; seeded_items_count?: number }>('/register', data),
   me: () => apiClient.get<{ user: User; shop: Shop; accessible_shops: Shop[]; permissions: any }>('/me'),
   logout: () => apiClient.post('/logout'),
   switchShop: (shop_id: number) => apiClient.post<{ message: string; shop: Shop }>('/switch-shop', { shop_id }),
@@ -31,6 +32,7 @@ export const shopApi = {
 export const categoryApi = {
   list: () => apiClient.get<Category[]>('/categories'),
   create: (data: any) => apiClient.post<{ message: string; category: Category }>('/categories', data),
+  applyTemplate: (business_type: string) => apiClient.post<{ message: string; items_created: number }>('/categories/apply-template', { business_type }),
   update: (id: number, data: any) => apiClient.put<{ message: string; category: Category }>(`/categories/${id}`, data),
   delete: (id: number) => apiClient.delete(`/categories/${id}`),
   reorder: (order: { id: number; display_order: number }[]) => apiClient.post('/categories/reorder', { order }),

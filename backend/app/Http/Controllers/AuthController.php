@@ -10,6 +10,7 @@ use App\Models\ShopSetting;
 use App\Models\ShopUser;
 use App\Models\Subscription;
 use App\Models\User;
+use App\Services\ShopCatalogueTemplateService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -28,7 +29,7 @@ class AuthController extends Controller
             'phone' => 'nullable|string|max:20',
             'password' => 'required|string|min:6',
             'shop_name' => 'required|string|max:255',
-            'business_type' => 'required|string|in:grocery,electronics,clothing,footwear,hardware,cosmetics,stationery,general,other',
+            'business_type' => 'required|string|in:electrical,hardware,grocery,general,mobile,laptop,sweets,cafe,clothing,medical,footwear,cosmetics,stationery,other',
             'gstin' => 'nullable|string|max:15',
             'city' => 'nullable|string|max:100',
             'state' => 'nullable|string|max:100',
@@ -100,28 +101,8 @@ class AuthController extends Controller
             'status' => 'trial',
         ]);
 
-        // Seed initial categories based on business type
-        $defaultCategories = [
-            'grocery' => ['Grains & Flours', 'Oils & Ghee', 'Spices & Masalas', 'Snacks & Biscuits', 'Beverages', 'Dairy', 'Personal Care', 'Cleaning'],
-            'electronics' => ['Cables & Adapters', 'Chargers & Power Banks', 'Audio & Headphones', 'LED Bulbs & Lighting', 'Mobile Accessories', 'Switches & Sockets'],
-            'clothing' => ['Men Casual Wear', 'Women Casual Wear', 'Kids Wear', 'Formal Wear', 'Jeans & Trousers', 'Innerwear & Socks'],
-            'footwear' => ['Casual Slippers', 'Sports Shoes', 'Formal Shoes', 'Sandals', 'Kids Footwear'],
-            'hardware' => ['Hand Tools', 'Fasteners & Screws', 'Paints & Adhesives', 'Electrical Supplies', 'Plumbing & Pipes'],
-            'cosmetics' => ['Skincare & Lotions', 'Hair Care & Shampoos', 'Fragrances & Deos', 'Makeup Essentials', 'Oral Hygiene'],
-            'stationery' => ['Notebooks & Registers', 'Pens & Pencils', 'Files & Folders', 'Art & Craft', 'Office Desk Supplies'],
-            'general' => ['Grocery', 'Personal Care', 'Stationery', 'Snacks', 'Household'],
-            'other' => ['General Items', 'Miscellaneous'],
-        ];
-
-        $catsToSeed = $defaultCategories[$validated['business_type']] ?? $defaultCategories['general'];
-        foreach ($catsToSeed as $index => $cName) {
-            Category::create([
-                'shop_id' => $shop->id,
-                'name' => $cName,
-                'display_order' => $index + 1,
-                'is_active' => true,
-            ]);
-        }
+        // Seed initial categories and branded products based on selected business category
+        $totalItemsSeeded = ShopCatalogueTemplateService::seedCatalogueForShop($shop, $validated['business_type']);
 
         $token = $user->createToken('shopbill_auth_token')->plainTextToken;
 
@@ -144,7 +125,16 @@ class AuthController extends Controller
                 'can_manage_items' => true,
                 'can_cancel_bills' => true,
             ],
+            'seeded_items_count' => $totalItemsSeeded,
         ], 201);
+    }
+
+    /**
+     * Get list of supported business categories and catalog templates.
+     */
+    public function businessTypes()
+    {
+        return response()->json(ShopCatalogueTemplateService::getBusinessTypes());
     }
 
     /**
