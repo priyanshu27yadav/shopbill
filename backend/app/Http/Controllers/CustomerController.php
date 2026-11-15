@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\AuditLog;
 use App\Models\Customer;
+use App\Models\Invoice;
 use App\Models\Payment;
+use App\Models\PaymentAllocation;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class CustomerController extends Controller
@@ -149,11 +152,18 @@ class CustomerController extends Controller
         $customer = Customer::where('shop_id', $shop->id)->where('id', $id)->firstOrFail();
 
         $invoices = $customer->invoices()
+            ->with([
+                'items:id,invoice_id,item_name,quantity,unit,unit_price,total_amount',
+                'payments' => function ($q) {
+                    $q->orderBy('payment_date', 'asc');
+                },
+            ])
             ->orderBy('invoice_date', 'desc')
             ->take(50)
             ->get();
 
         $payments = Payment::where('customer_id', $customer->id)
+            ->with(['invoice:id,invoice_number'])
             ->orderBy('payment_date', 'desc')
             ->take(50)
             ->get();
@@ -193,6 +203,7 @@ class CustomerController extends Controller
 
     /**
      * Record payment collection against customer's outstanding Udhaar / credit balance.
+     * Automatically clears unpaid invoice dues and creates linked payment records.
      */
     public function collectPayment(Request $request, $id)
     {
@@ -205,43 +216,160 @@ class CustomerController extends Controller
             'payment_method' => 'required|string|in:cash,upi,card,bank_transfer,cheque',
             'reference_number' => 'nullable|string|max:100',
             'notes' => 'nullable|string',
+            'invoice_id' => 'nullable|exists:invoices,id',
         ]);
 
         return DB::transaction(function () use ($shop, $user, $customer, $validated, $request) {
-            $amount = floatval($validated['amount']);
+            $totalAmount = floatval($validated['amount']);
+            $remaining = $totalAmount;
+            $payMethod = $validated['payment_method'];
+            $refNumber = $validated['reference_number'] ?? null;
+            $userNotes = $validated['notes'] ?? 'Settlement towards outstanding balance';
 
-            $payNumber = 'PAY-CUST-' . date('Ymd') . '-' . str_pad(Payment::where('shop_id', $shop->id)->count() + 1, 4, '0', STR_PAD_LEFT);
+            $allocatedPayments = [];
+            $now = Carbon::now();
 
-            $payment = Payment::create([
-                'shop_id' => $shop->id,
-                'customer_id' => $customer->id,
-                'invoice_id' => null,
-                'payment_number' => $payNumber,
-                'payment_date' => Carbon::now(),
-                'amount' => $amount,
-                'payment_method' => $validated['payment_method'],
-                'reference_number' => $validated['reference_number'] ?? null,
-                'payment_type' => 'customer_credit_settlement',
-                'notes' => $validated['notes'] ?? 'Settlement towards outstanding balance',
-            ]);
+            // 1. If a specific invoice is targeted by ID
+            if (!empty($validated['invoice_id'])) {
+                $targetInv = Invoice::where('shop_id', $shop->id)
+                    ->where('customer_id', $customer->id)
+                    ->where('id', $validated['invoice_id'])
+                    ->first();
 
-            // Deduct from customer current_balance
-            $customer->decrement('current_balance', $amount);
+                if ($targetInv && $targetInv->balance_due > 0) {
+                    $alloc = min($remaining, floatval($targetInv->balance_due));
+                    $newPaid = round(floatval($targetInv->amount_paid) + $alloc, 2);
+                    $newDue = max(0.00, round(floatval($targetInv->final_amount) - $newPaid, 2));
+                    $newStatus = ($newDue <= 0.00) ? 'paid' : 'partial';
+
+                    $targetInv->update([
+                        'amount_paid' => $newPaid,
+                        'balance_due' => $newDue,
+                        'payment_status' => $newStatus,
+                    ]);
+
+                    $payNumber = 'PAY-DUE-' . date('Ymd') . '-' . str_pad(Payment::where('shop_id', $shop->id)->count() + 1, 4, '0', STR_PAD_LEFT);
+                    $payment = Payment::create([
+                        'shop_id' => $shop->id,
+                        'customer_id' => $customer->id,
+                        'invoice_id' => $targetInv->id,
+                        'payment_number' => $payNumber,
+                        'payment_date' => $now,
+                        'amount' => $alloc,
+                        'payment_method' => $payMethod,
+                        'reference_number' => $refNumber,
+                        'payment_type' => 'due_clearance',
+                        'notes' => "Due cleared for Bill #{$targetInv->invoice_number}. " . $userNotes,
+                    ]);
+
+                    PaymentAllocation::create([
+                        'payment_id' => $payment->id,
+                        'invoice_id' => $targetInv->id,
+                        'amount' => $alloc,
+                    ]);
+
+                    $allocatedPayments[] = $payment;
+                    $remaining = round($remaining - $alloc, 2);
+                }
+            }
+
+            // 2. Auto-allocate across unpaid/partial invoices (FIFO - oldest debt cleared first)
+            if ($remaining > 0) {
+                $unpaidInvoices = Invoice::where('shop_id', $shop->id)
+                    ->where('customer_id', $customer->id)
+                    ->where('status', 'completed')
+                    ->where('balance_due', '>', 0)
+                    ->orderBy('invoice_date', 'asc')
+                    ->orderBy('id', 'asc')
+                    ->get();
+
+                foreach ($unpaidInvoices as $inv) {
+                    if ($remaining <= 0) break;
+
+                    $alloc = min($remaining, floatval($inv->balance_due));
+                    $newPaid = round(floatval($inv->amount_paid) + $alloc, 2);
+                    $newDue = max(0.00, round(floatval($inv->final_amount) - $newPaid, 2));
+                    $newStatus = ($newDue <= 0.00) ? 'paid' : 'partial';
+
+                    $inv->update([
+                        'amount_paid' => $newPaid,
+                        'balance_due' => $newDue,
+                        'payment_status' => $newStatus,
+                    ]);
+
+                    $payNumber = 'PAY-DUE-' . date('Ymd') . '-' . str_pad(Payment::where('shop_id', $shop->id)->count() + 1, 4, '0', STR_PAD_LEFT);
+                    $payment = Payment::create([
+                        'shop_id' => $shop->id,
+                        'customer_id' => $customer->id,
+                        'invoice_id' => $inv->id,
+                        'payment_number' => $payNumber,
+                        'payment_date' => $now,
+                        'amount' => $alloc,
+                        'payment_method' => $payMethod,
+                        'reference_number' => $refNumber,
+                        'payment_type' => 'due_clearance',
+                        'notes' => "Due cleared for Bill #{$inv->invoice_number}. " . $userNotes,
+                    ]);
+
+                    PaymentAllocation::create([
+                        'payment_id' => $payment->id,
+                        'invoice_id' => $inv->id,
+                        'amount' => $alloc,
+                    ]);
+
+                    $allocatedPayments[] = $payment;
+                    $remaining = round($remaining - $alloc, 2);
+                }
+            }
+
+            // 3. If any leftover advance payment beyond invoice dues
+            if ($remaining > 0) {
+                $payNumber = 'PAY-CUST-' . date('Ymd') . '-' . str_pad(Payment::where('shop_id', $shop->id)->count() + 1, 4, '0', STR_PAD_LEFT);
+                $payment = Payment::create([
+                    'shop_id' => $shop->id,
+                    'customer_id' => $customer->id,
+                    'invoice_id' => null,
+                    'payment_number' => $payNumber,
+                    'payment_date' => $now,
+                    'amount' => $remaining,
+                    'payment_method' => $payMethod,
+                    'reference_number' => $refNumber,
+                    'payment_type' => 'customer_credit_settlement',
+                    'notes' => $userNotes,
+                ]);
+                $allocatedPayments[] = $payment;
+            }
+
+            // 4. Synchronize customer outstanding balance accurately
+            $remainingDue = Invoice::where('shop_id', $shop->id)
+                ->where('customer_id', $customer->id)
+                ->where('status', 'completed')
+                ->sum('balance_due');
+
+            $customer->current_balance = max(0.00, round(floatval($remainingDue), 2));
+            $customer->save();
+
+            // 5. Invalidate caches so Invoice History and Dashboard reflect immediate update
+            Cache::forget("shop_{$shop->id}_dashboard_cache");
+            Cache::forget("shop_{$shop->id}_invoices_page_1");
+            Cache::forget("shop_{$shop->id}_invoices_p1_per_25");
+            Cache::forget("shop_{$shop->id}_invoices_p1_per_50");
+            Cache::forget("shop_{$shop->id}_invoices_p1_per_100");
 
             AuditLog::create([
                 'shop_id' => $shop->id,
                 'user_id' => $user->id,
                 'action' => 'customer.payment_collected',
                 'entity_type' => 'payment',
-                'entity_id' => $payment->id,
+                'entity_id' => $allocatedPayments[0]->id ?? null,
                 'ip_address' => $request->ip(),
-                'details' => ['customer_name' => $customer->name, 'amount' => $amount],
+                'details' => ['customer_name' => $customer->name, 'amount' => $totalAmount],
             ]);
 
             return response()->json([
-                'message' => 'Payment recorded and customer balance updated successfully.',
-                'payment' => $payment,
-                'updated_balance' => $customer->fresh()->current_balance,
+                'message' => 'Payment recorded, bill dues cleared, and customer ledger updated successfully.',
+                'payments' => $allocatedPayments,
+                'updated_balance' => $customer->current_balance,
             ]);
         });
     }

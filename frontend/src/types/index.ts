@@ -145,6 +145,7 @@ export interface Invoice {
   cancellation_reason?: string;
   cancelled_at?: string;
   sync_id?: string;
+  items_count?: number;
   items?: InvoiceItem[];
   customer?: Customer;
   user?: { id: number; name: string };

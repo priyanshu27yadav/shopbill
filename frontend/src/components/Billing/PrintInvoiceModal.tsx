@@ -295,23 +295,68 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                           </td>
                         </tr>
 
-                        {/* Received Amount */}
-                        <tr className="border-b border-slate-300 text-xs font-semibold">
-                          <td colSpan={5} className="py-1.5 px-3 text-right border-r border-slate-400 text-slate-700">
-                            Received Amount
-                          </td>
-                          <td className="py-1.5 px-3 text-right font-mono font-bold text-slate-900">
-                            Rs. {amountPaid.toFixed(2)}
-                          </td>
-                        </tr>
+                        {/* Payments Breakdown: Initial purchase payment & subsequent due clearances */}
+                        {invoice.payments && invoice.payments.length > 0 ? (
+                          <>
+                            {invoice.payments.map((p: any, idx: number) => {
+                              const isInitial = idx === 0 || p.payment_type === 'invoice_payment';
+                              const pDate = p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+                              return (
+                                <tr key={p.id || idx} className="border-b border-slate-200 text-xs font-semibold">
+                                  <td colSpan={5} className="py-1.5 px-3 text-right border-r border-slate-400 text-slate-700">
+                                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                      <span className={isInitial ? 'text-slate-800' : 'text-emerald-700 font-bold'}>
+                                        {isInitial ? 'Paid at Purchase (खरीदते समय)' : 'Due Cleared (उधार जमा)'}:
+                                      </span>
+                                      <span className="text-[11px] font-normal text-slate-500">
+                                        ({p.payment_method?.toUpperCase()} • {pDate}{p.reference_number ? ` • Ref: ${p.reference_number}` : ''})
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="py-1.5 px-3 text-right font-mono font-bold text-slate-900">
+                                    Rs. {Number(p.amount).toFixed(2)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+
+                            {/* Total Paid */}
+                            <tr className="border-b border-slate-300 text-xs font-bold bg-slate-50">
+                              <td colSpan={5} className="py-1.5 px-3 text-right border-r border-slate-400 text-slate-800">
+                                Total Paid (कुल भुगतान)
+                              </td>
+                              <td className="py-1.5 px-3 text-right font-mono font-black text-slate-900">
+                                Rs. {amountPaid.toFixed(2)}
+                              </td>
+                            </tr>
+                          </>
+                        ) : (
+                          /* Received Amount single row */
+                          <tr className="border-b border-slate-300 text-xs font-semibold">
+                            <td colSpan={5} className="py-1.5 px-3 text-right border-r border-slate-400 text-slate-700">
+                              Received Amount ({invoice.payment_method?.toUpperCase()})
+                            </td>
+                            <td className="py-1.5 px-3 text-right font-mono font-bold text-slate-900">
+                              Rs. {amountPaid.toFixed(2)}
+                            </td>
+                          </tr>
+                        )}
 
                         {/* Due Balance */}
                         <tr className="text-xs font-semibold">
                           <td colSpan={5} className="py-1.5 px-3 text-right border-r border-slate-400 text-slate-700">
-                            Due Balance
+                            Due Balance (शेष उधार)
                           </td>
-                          <td className="py-1.5 px-3 text-right font-mono font-bold text-slate-900">
-                            Rs. {balanceDue.toFixed(2)}
+                          <td className="py-1.5 px-3 text-right font-mono font-bold">
+                            {balanceDue > 0 ? (
+                              <span className="text-rose-600 font-extrabold bg-rose-50 px-2 py-0.5 rounded">
+                                Rs. {balanceDue.toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-emerald-700 font-extrabold bg-emerald-50 px-2 py-0.5 rounded">
+                                Rs. 0.00 (चुकता / Cleared)
+                              </span>
+                            )}
                           </td>
                         </tr>
                       </tbody>
@@ -423,16 +468,35 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                     <span>Total ({totalQty} items):</span>
                     <span className="font-mono">Rs.{finalAmount.toFixed(2)}</span>
                   </div>
-                  <div className="flex justify-between pt-1">
-                    <span>Received:</span>
-                    <span className="font-mono font-bold">Rs.{amountPaid.toFixed(2)}</span>
-                  </div>
-                  {balanceDue > 0 && (
-                    <div className="flex justify-between text-rose-600 font-bold">
-                      <span>Due Balance:</span>
-                      <span className="font-mono">Rs.{balanceDue.toFixed(2)}</span>
+                  {invoice.payments && invoice.payments.length > 0 ? (
+                    <>
+                      {invoice.payments.map((p: any, idx: number) => {
+                        const isInitial = idx === 0 || p.payment_type === 'invoice_payment';
+                        const pDate = p.payment_date ? new Date(p.payment_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : '';
+                        return (
+                          <div key={p.id || idx} className="flex justify-between text-[10px]">
+                            <span>{isInitial ? 'Initial Paid' : 'Due Cleared'} ({p.payment_method?.toUpperCase()} {pDate}):</span>
+                            <span className="font-mono font-semibold">Rs.{Number(p.amount).toFixed(2)}</span>
+                          </div>
+                        );
+                      })}
+                      <div className="flex justify-between pt-0.5 border-t border-slate-200 font-bold">
+                        <span>Total Paid:</span>
+                        <span className="font-mono">Rs.{amountPaid.toFixed(2)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between pt-1">
+                      <span>Received:</span>
+                      <span className="font-mono font-bold">Rs.{amountPaid.toFixed(2)}</span>
                     </div>
                   )}
+                  <div className="flex justify-between pt-0.5 font-bold">
+                    <span>Due Balance:</span>
+                    <span className={`font-mono ${balanceDue > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
+                      Rs.{balanceDue.toFixed(2)} {balanceDue <= 0 ? '(Cleared)' : ''}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Footer */}

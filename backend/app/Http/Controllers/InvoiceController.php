@@ -27,12 +27,11 @@ class InvoiceController extends Controller
         $shop = $request->get('current_shop');
 
         $query = Invoice::where('shop_id', $shop->id)
+            ->withCount('items')
             ->with([
-                'items',
                 'customer:id,name,phone,address,gstin',
                 'user:id,name',
-                'payments',
-                'shop:id,name,tagline,address_line1,address_line2,city,state,pincode,phone,email,gstin,logo_url,currency_symbol,is_gst_registered',
+                'payments:id,shop_id,invoice_id,customer_id,payment_number,payment_date,amount,payment_method,payment_type,notes',
             ]);
 
         // Filter by date range
@@ -68,18 +67,21 @@ class InvoiceController extends Controller
             });
         }
 
+        $perPage = $request->integer('per_page', 50);
+
         if (!$request->filled('start_date') && !$request->filled('end_date') && !$request->filled('status') && !$request->filled('payment_status') && !$request->filled('billing_mode') && !$request->filled('search') && $request->integer('page', 1) === 1) {
-            $invoices = Cache::remember("shop_{$shop->id}_invoices_page_1", 60, function () use ($query, $request) {
+            $cacheKey = "shop_{$shop->id}_invoices_p1_per_{$perPage}";
+            $invoices = Cache::remember($cacheKey, 30, function () use ($query, $perPage) {
                 return $query->orderBy('invoice_date', 'desc')
                     ->orderBy('id', 'desc')
-                    ->paginate($request->integer('per_page', 25));
+                    ->paginate($perPage);
             });
             return response()->json($invoices);
         }
 
         $invoices = $query->orderBy('invoice_date', 'desc')
             ->orderBy('id', 'desc')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate($perPage);
 
         return response()->json($invoices);
     }
@@ -97,7 +99,9 @@ class InvoiceController extends Controller
                 'items',
                 'customer',
                 'user:id,name',
-                'payments',
+                'payments' => function ($q) {
+                    $q->orderBy('payment_date', 'asc')->orderBy('id', 'asc');
+                },
                 'shop:id,name,tagline,address_line1,address_line2,city,state,pincode,phone,email,gstin,logo_url,currency_symbol,is_gst_registered',
             ])
             ->firstOrFail();
@@ -419,6 +423,9 @@ class InvoiceController extends Controller
             Cache::forget("shop_{$shop->id}_dashboard_cache");
             Cache::forget("shop_{$shop->id}_products_all");
             Cache::forget("shop_{$shop->id}_invoices_page_1");
+            Cache::forget("shop_{$shop->id}_invoices_p1_per_25");
+            Cache::forget("shop_{$shop->id}_invoices_p1_per_50");
+            Cache::forget("shop_{$shop->id}_invoices_p1_per_100");
 
             return response()->json([
                 'message' => 'Invoice generated successfully.',
@@ -473,6 +480,12 @@ class InvoiceController extends Controller
                     'reason' => $validated['reason'],
                 ],
             ]);
+
+            Cache::forget("shop_{$shop->id}_dashboard_cache");
+            Cache::forget("shop_{$shop->id}_invoices_page_1");
+            Cache::forget("shop_{$shop->id}_invoices_p1_per_25");
+            Cache::forget("shop_{$shop->id}_invoices_p1_per_50");
+            Cache::forget("shop_{$shop->id}_invoices_p1_per_100");
 
             return response()->json([
                 'message' => 'Invoice cancelled successfully.',

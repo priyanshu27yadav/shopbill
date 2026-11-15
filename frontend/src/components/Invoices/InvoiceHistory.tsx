@@ -44,7 +44,7 @@ export const InvoiceHistory: React.FC = () => {
   const loadInvoices = async () => {
     setLoading(true);
     try {
-      const res = await invoiceApi.list({ per_page: 100 });
+      const res = await invoiceApi.list({ per_page: 50 });
       setInvoices(res.data.data || []);
     } catch (err) {
       console.error(err);
@@ -53,14 +53,8 @@ export const InvoiceHistory: React.FC = () => {
     }
   };
 
-  // View full invoice with all items list identical to bill generated one
+  // View full invoice with all items and payments list identical to checkout bill
   const handleViewInvoice = async (inv: Invoice) => {
-    // If already has items populated, view immediately
-    if (inv.items && inv.items.length > 0) {
-      setSelectedInvoice(inv);
-      return;
-    }
-
     setLoadingInvoiceId(inv.id);
     try {
       const res = await invoiceApi.get(inv.id);
@@ -208,7 +202,12 @@ export const InvoiceHistory: React.FC = () => {
               ) : (
                 filtered.map((inv) => {
                   const isRowLoading = loadingInvoiceId === inv.id;
-                  const itemsCount = inv.items?.length || 0;
+                  const itemsCount = inv.items_count ?? inv.items?.length ?? 0;
+                  const finalAmt = Number(inv.final_amount || 0);
+                  const paidAmt = Number(inv.amount_paid || 0);
+                  const dueAmt = Number(inv.balance_due || 0);
+                  const hasDueCleared = dueAmt === 0 && (inv.payments && inv.payments.length > 1);
+
                   return (
                     <tr
                       key={inv.id}
@@ -248,19 +247,36 @@ export const InvoiceHistory: React.FC = () => {
                           {inv.billing_mode}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-right font-extrabold font-mono text-slate-900 dark:text-white">
-                        {currency}{Number(inv.final_amount).toFixed(2)}
+                      <td className="py-3 px-4 text-right">
+                        <p className="font-extrabold font-mono text-slate-900 dark:text-white text-sm">
+                          {currency}{finalAmt.toFixed(2)}
+                        </p>
+                        {dueAmt > 0 ? (
+                          <p className="text-[10px] font-bold font-mono text-rose-600 dark:text-rose-400 mt-0.5">
+                            Paid: {currency}{paidAmt.toFixed(2)} • Due: {currency}{dueAmt.toFixed(2)}
+                          </p>
+                        ) : hasDueCleared ? (
+                          <p className="text-[10px] font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 flex items-center justify-end gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            <span>Due Cleared (Paid {currency}{finalAmt.toFixed(2)})</span>
+                          </p>
+                        ) : null}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${
-                            inv.payment_status === 'paid'
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                          }`}
-                        >
-                          {inv.payment_method} • {inv.payment_status}
-                        </span>
+                        {inv.payment_status === 'paid' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                            <CheckCircle className="w-3 h-3" />
+                            <span>{hasDueCleared ? 'Paid (Due Cleared)' : 'Paid'}</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded uppercase bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300">
+                            <Clock className="w-3 h-3" />
+                            <span>Due {currency}{dueAmt.toFixed(2)}</span>
+                          </span>
+                        )}
+                        <p className="text-[9px] text-slate-400 uppercase font-semibold mt-0.5">
+                          {inv.payment_method}
+                        </p>
                       </td>
                       <td className="py-3 px-4 text-center">
                         {inv.status === 'completed' ? (
