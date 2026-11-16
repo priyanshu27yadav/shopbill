@@ -15,6 +15,9 @@ export const authApi = {
   getBusinessTypes: () => apiClient.get<any[]>('/business-types'),
   login: (data: any) => apiClient.post<{ message: string; token: string; user: User; shop: Shop; permissions: any }>('/login', data),
   register: (data: any) => apiClient.post<{ message: string; token: string; user: User; shop: Shop; permissions: any; seeded_items_count?: number }>('/register', data),
+  forgotPassword: (email: string) => apiClient.post<{ message: string; email: string; dev_otp?: string }>('/auth/forgot-password', { email }),
+  resetPassword: (data: { email: string; otp: string; password: string; password_confirmation: string }) =>
+    apiClient.post<{ message: string; token: string; user: User; shop: Shop; permissions: any }>('/auth/reset-password', data),
   me: () => apiClient.get<{ user: User; shop: Shop; accessible_shops: Shop[]; permissions: any }>('/me'),
   logout: () => apiClient.post('/logout'),
   switchShop: (shop_id: number) => apiClient.post<{ message: string; shop: Shop }>('/switch-shop', { shop_id }),
@@ -123,6 +126,8 @@ export const settingsApi = {
     });
   },
   updateShopSettings: (settings: Record<string, any>) => apiClient.put<{ message: string; shop_settings: Record<string, string> }>('/settings/shop', { settings }),
+  changePassword: (data: { current_password: string; new_password: string; new_password_confirmation: string }) =>
+    apiClient.post<{ message: string }>('/settings/change-password', data),
 };
 
 export const syncApi = {

@@ -12,6 +12,7 @@ interface AuthContextType {
   login: (credentials: any) => Promise<void>;
   register: (data: any) => Promise<void>;
   logout: () => Promise<void>;
+  setAuthSession: (authToken: string, authUser: User, authShop: Shop, authPerms?: Permissions) => void;
   switchShop: (shopId: number) => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -85,12 +86,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    fetchCurrentUser();
+    if (token && !user) {
+      fetchCurrentUser();
+    } else {
+      setLoading(false);
+    }
   }, [token]);
 
-  const login = async (credentials: any) => {
-    const res = await authApi.login(credentials);
-    const { token: authToken, user: authUser, shop: authShop, permissions: authPerms } = res.data;
+  const setAuthSession = (authToken: string, authUser: User, authShop: Shop, authPerms?: Permissions) => {
     localStorage.setItem('shopbill_token', authToken);
     if (authUser) {
       localStorage.setItem('shopbill_cached_user', JSON.stringify(authUser));
@@ -103,40 +106,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(authUser);
     setShop(authShop);
     setPermissions(authPerms || defaultPermissions);
+    setLoading(false);
+  };
+
+  const login = async (credentials: any) => {
+    const res = await authApi.login(credentials);
+    const { token: authToken, user: authUser, shop: authShop, permissions: authPerms } = res.data;
+    setAuthSession(authToken, authUser, authShop, authPerms);
   };
 
   const register = async (data: any) => {
     const res = await authApi.register(data);
     const { token: authToken, user: authUser, shop: authShop, permissions: authPerms } = res.data;
-    localStorage.setItem('shopbill_token', authToken);
-    if (authUser) {
-      localStorage.setItem('shopbill_cached_user', JSON.stringify(authUser));
-    }
-    if (authShop?.id) {
-      localStorage.setItem('shopbill_active_shop_id', authShop.id.toString());
-      localStorage.setItem('shopbill_cached_shop', JSON.stringify(authShop));
-    }
-    setToken(authToken);
-    setUser(authUser);
-    setShop(authShop);
-    setPermissions(authPerms || defaultPermissions);
+    setAuthSession(authToken, authUser, authShop, authPerms);
   };
 
   const logout = async () => {
-    try {
-      if (token) {
-        await authApi.logout();
-      }
-    } catch (e) {
-      // Ignore
-    } finally {
-      localStorage.removeItem('shopbill_token');
-      localStorage.removeItem('shopbill_active_shop_id');
-      localStorage.removeItem('shopbill_cached_user');
-      localStorage.removeItem('shopbill_cached_shop');
-      setToken(null);
-      setUser(null);
-      setShop(null);
+    const oldToken = token;
+    // 0ms instant UI reset
+    localStorage.removeItem('shopbill_token');
+    localStorage.removeItem('shopbill_active_shop_id');
+    localStorage.removeItem('shopbill_cached_user');
+    localStorage.removeItem('shopbill_cached_shop');
+    localStorage.removeItem('shopbill_cached_categories');
+    localStorage.removeItem('shopbill_cached_invoices');
+    setToken(null);
+    setUser(null);
+    setShop(null);
+    setAccessibleShops([]);
+    setLoading(false);
+
+    // Asynchronously revoke token in background without blocking UI
+    if (oldToken) {
+      authApi.logout().catch(() => {});
     }
   };
 
@@ -163,6 +165,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         logout,
+        setAuthSession,
         switchShop,
         refreshProfile,
       }}

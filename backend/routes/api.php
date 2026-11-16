@@ -23,12 +23,15 @@ Route::get('/health', fn () => response()->json(['status' => 'ok', 'app' => 'Sho
 Route::get('/business-types', [AuthController::class, 'businessTypes']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/auth/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::post('/auth/reset-password', [AuthController::class, 'resetPassword']);
 
 // Authenticated routes
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/switch-shop', [AuthController::class, 'switchShop']);
+    Route::post('/settings/change-password', [AuthController::class, 'changePassword']);
 
     // Shop-isolated routes
     Route::middleware('shop')->group(function () {

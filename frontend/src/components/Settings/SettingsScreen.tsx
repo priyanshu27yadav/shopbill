@@ -12,6 +12,7 @@ import {
   QrCode,
   Upload,
   Sparkles,
+  Lock,
   Image as ImageIcon,
 } from 'lucide-react';
 import { settingsApi, shopApi } from '../../api';
@@ -20,7 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 
 export const SettingsScreen: React.FC = () => {
   const { shop, refreshProfile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'shop' | 'payment_qr' | 'invoice' | 'staff'>('shop');
+  const [activeTab, setActiveTab] = useState<'shop' | 'payment_qr' | 'invoice' | 'staff' | 'security'>('shop');
 
   // Shop Profile Form
   const [shopForm, setShopForm] = useState({
@@ -72,6 +73,16 @@ export const SettingsScreen: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [uploadingQr, setUploadingQr] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
+
+  // Password Change Form
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: '',
+    new_password: '',
+    new_password_confirmation: '',
+  });
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
 
   useEffect(() => {
     loadSettings();
@@ -222,6 +233,41 @@ export const SettingsScreen: React.FC = () => {
     }
   };
 
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordForm.new_password.length < 6) {
+      setPasswordError('New password must be at least 6 characters long.');
+      return;
+    }
+    if (passwordForm.new_password !== passwordForm.new_password_confirmation) {
+      setPasswordError('New password and confirmation password do not match.');
+      return;
+    }
+
+    setPasswordLoading(true);
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    try {
+      const res = await settingsApi.changePassword(passwordForm);
+      setPasswordSuccess(res.data.message || 'Password updated successfully!');
+      setPasswordForm({
+        current_password: '',
+        new_password: '',
+        new_password_confirmation: '',
+      });
+    } catch (err: any) {
+      setPasswordError(
+        err.response?.data?.message ||
+        err.response?.data?.errors?.current_password?.[0] ||
+        err.response?.data?.errors?.new_password?.[0] ||
+        'Failed to change password. Please check your current password.'
+      );
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6 font-sans">
       <div>
@@ -289,6 +335,18 @@ export const SettingsScreen: React.FC = () => {
         >
           <Users className="w-4 h-4" />
           <span>Staff & Cashiers</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('security')}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+            activeTab === 'security'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Lock className="w-4 h-4" />
+          <span>Change Password (सुरक्षा एवं पासवर्ड)</span>
         </button>
       </div>
 
@@ -706,6 +764,101 @@ export const SettingsScreen: React.FC = () => {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Tab 5: Security & Change Password */}
+      {activeTab === 'security' && (
+        <form onSubmit={handleChangePassword} className="bg-white dark:bg-slate-900 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 shadow-xs space-y-4 max-w-xl">
+          <div>
+            <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm flex items-center gap-2">
+              <Shield className="w-4 h-4 text-emerald-600" />
+              <span>Change Password (सुरक्षा एवं पासवर्ड बदलें)</span>
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Update your account password to keep your shop data and billing ledger secure.
+            </p>
+          </div>
+
+          {passwordError && (
+            <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/40 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
+              <Shield className="w-4 h-4 shrink-0 text-rose-600" />
+              <span>{passwordError}</span>
+            </div>
+          )}
+
+          {passwordSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs font-semibold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+              <span>{passwordSuccess}</span>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Current Password (वर्तमान पासवर्ड) *
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="password"
+                  required
+                  value={passwordForm.current_password}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, current_password: e.target.value })}
+                  placeholder="Enter current password"
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                New Password (नया पासवर्ड) *
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={passwordForm.new_password}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, new_password: e.target.value })}
+                  placeholder="Minimum 6 characters"
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Confirm New Password (पासवर्ड दोबारा लिखें) *
+              </label>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={passwordForm.new_password_confirmation}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, new_password_confirmation: e.target.value })}
+                  placeholder="Re-enter new password"
+                  className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              disabled={passwordLoading}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 cursor-pointer"
+            >
+              <Save className="w-4 h-4" />
+              <span>{passwordLoading ? 'Updating Password...' : 'Save New Password (पासवर्ड बदलें)'}</span>
+            </button>
+          </div>
+        </form>
       )}
 
       {/* Add Staff Modal */}
