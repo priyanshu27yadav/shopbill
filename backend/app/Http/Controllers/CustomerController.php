@@ -55,23 +55,44 @@ class CustomerController extends Controller
         }
 
         $cleanPhone = preg_replace('/[^\d]/', '', $phone);
-        $last10 = substr($cleanPhone, -10);
+        $last10 = strlen($cleanPhone) >= 10 ? substr($cleanPhone, -10) : $cleanPhone;
+        $cacheKey = "shop_{$shop->id}_lookup_phone_" . ($last10 ?: $cleanPhone ?: md5($phone));
+
+        // In-memory cache for ultra-fast lookup (0ms)
+        $cached = \Illuminate\Support\Facades\Cache::get($cacheKey);
+        if ($cached !== null) {
+            return response()->json($cached);
+        }
+
+        // 1. Fast Index-based lookup with candidate list
+        $candidates = array_values(array_unique(array_filter([
+            $phone,
+            $cleanPhone,
+            $last10,
+            !empty($last10) ? '+91' . $last10 : null,
+            !empty($last10) ? '+91 ' . $last10 : null,
+            !empty($last10) ? '0' . $last10 : null,
+        ])));
 
         $customer = Customer::where('shop_id', $shop->id)
-            ->where(function ($q) use ($phone, $cleanPhone, $last10) {
-                $q->where('phone', $phone)
-                    ->orWhere('phone', $cleanPhone);
-                if (!empty($last10)) {
-                    $q->orWhere('phone', 'like', "%{$last10}%");
-                }
-            })
+            ->whereIn('phone', $candidates)
             ->first();
 
+        // 2. Fallback to suffix search if not found by exact candidate
+        if (!$customer && !empty($last10) && strlen($last10) >= 6) {
+            $customer = Customer::where('shop_id', $shop->id)
+                ->where('phone', 'like', "%{$last10}")
+                ->first();
+        }
+
         if (!$customer) {
-            return response()->json([
+            $response = [
                 'found' => false,
                 'phone' => $phone,
-            ]);
+            ];
+            // Cache negative lookup for 60 seconds to avoid hammering DB while typing
+            \Illuminate\Support\Facades\Cache::put($cacheKey, $response, 60);
+            return response()->json($response);
         }
 
         // Summary calculations in single fast query
@@ -93,7 +114,7 @@ class CustomerController extends Controller
             ->take(6)
             ->get();
 
-        return response()->json([
+        $response = [
             'found' => true,
             'customer' => $customer,
             'summary' => [
@@ -104,7 +125,12 @@ class CustomerController extends Controller
                 'credit_limit' => floatval($customer->credit_limit),
             ],
             'recent_bills' => $recentBills,
-        ]);
+        ];
+
+        // Cache customer lookup for 2 minutes
+        \Illuminate\Support\Facades\Cache::put($cacheKey, $response, 120);
+
+        return response()->json($response);
     }
 
     /**

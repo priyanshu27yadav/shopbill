@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Phone,
   Search,
@@ -6,13 +6,10 @@ import {
   MapPin,
   ShoppingBag,
   Receipt,
-  AlertTriangle,
   CheckCircle2,
   ArrowRight,
   UserPlus,
   X,
-  CreditCard,
-  Clock,
   RotateCcw,
   Wallet,
   Sparkles,
@@ -44,6 +41,7 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
   const [loading, setLoading] = useState(false);
   const [lookupResult, setLookupResult] = useState<{
     found: boolean;
+    phone?: string;
     customer?: Customer;
     summary?: {
       total_shopping: number;
@@ -62,6 +60,37 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
   const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [createError, setCreateError] = useState('');
 
+  // Search debounce and in-flight request tracker
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const inFlightRef = useRef<string | null>(null);
+
+  // Helper to read local cache
+  const getCachedCustomers = (): Customer[] => {
+    try {
+      const cached = localStorage.getItem('shopbill_cached_customers');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  // 0ms instant local customer finder
+  const findCustomerInLocalCache = (phoneNumber: string): Customer | null => {
+    const clean = phoneNumber.replace(/\D/g, '');
+    const last10 = clean.length >= 10 ? clean.slice(-10) : clean;
+    if (!last10 || last10.length < 6) return null;
+
+    const list = getCachedCustomers();
+    return (
+      list.find((c) => {
+        if (!c.phone) return false;
+        const cClean = c.phone.replace(/\D/g, '');
+        const cLast10 = cClean.length >= 10 ? cClean.slice(-10) : cClean;
+        return cClean === clean || cLast10 === last10 || c.phone.includes(last10);
+      }) || null
+    );
+  };
+
   // Reset when modal opens
   useEffect(() => {
     if (isOpen) {
@@ -71,6 +100,7 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
       setNewAddress('');
       setNewGstin('');
       setCreateError('');
+      inFlightRef.current = null;
     }
   }, [isOpen]);
 
@@ -78,12 +108,78 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
 
   const currency = shop?.currency_symbol || '₹';
 
+  // Background server fetch to sync latest detailed history without blocking the user
+  const fetchCustomerDetailsAsync = async (phoneNumber: string, expectNew = false) => {
+    const clean = phoneNumber.replace(/\D/g, '');
+    if (inFlightRef.current === clean) return;
+    inFlightRef.current = clean;
+
+    try {
+      const res = await customerApi.lookupByPhone(phoneNumber);
+      if (res.data) {
+        if (res.data.found) {
+          setLookupResult(res.data);
+        } else if (!expectNew) {
+          setLookupResult({ found: false, phone: phoneNumber });
+          setNewName('');
+        }
+      }
+    } catch (err) {
+      // Ignore background fetch error
+    } finally {
+      if (inFlightRef.current === clean) {
+        inFlightRef.current = null;
+      }
+    }
+  };
+
   const handleSearch = async (phoneNumberToSearch?: string) => {
     const p = (phoneNumberToSearch || phone).trim();
     if (!p || p.length < 3) return;
 
+    const clean = p.replace(/\D/g, '');
+
+    // 1. Check local cache first (0ms instant!)
+    const localCust = findCustomerInLocalCache(p);
+    if (localCust) {
+      setLookupResult({
+        found: true,
+        customer: localCust,
+        summary: {
+          total_shopping: Number(localCust.total_purchases || 0),
+          total_bills: 0,
+          current_balance: Number(localCust.current_balance || 0),
+          total_paid: Math.max(
+            0,
+            Number(localCust.total_purchases || 0) - Number(localCust.current_balance || 0)
+          ),
+          credit_limit: Number(localCust.credit_limit || 0),
+        },
+        recent_bills: [],
+      });
+      // Fetch full server stats in background
+      fetchCustomerDetailsAsync(p);
+      return;
+    }
+
+    // 2. If cached list is populated and number is 10 digits and not in it, it's immediately a new customer!
+    const cachedList = getCachedCustomers();
+    if (cachedList.length > 0 && clean.length === 10) {
+      setLookupResult({
+        found: false,
+        phone: p,
+      });
+      setNewName('');
+      fetchCustomerDetailsAsync(p, true);
+      return;
+    }
+
+    // 3. Fallback to API if not in cache
+    if (inFlightRef.current === clean) return;
+    inFlightRef.current = clean;
     setLoading(true);
     setCreateError('');
+
     try {
       const res = await customerApi.lookupByPhone(p);
       setLookupResult(res.data);
@@ -94,15 +190,58 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
       console.error('Customer lookup failed:', err);
     } finally {
       setLoading(false);
+      inFlightRef.current = null;
     }
   };
 
   const handlePhoneChange = (val: string) => {
     setPhone(val);
-    // Auto-search if 10 digits entered
     const clean = val.replace(/\D/g, '');
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    // Auto-search immediately in 0ms when 10 digits entered
     if (clean.length === 10) {
-      handleSearch(val);
+      // 1. Instant local match
+      const localCust = findCustomerInLocalCache(val);
+      if (localCust) {
+        setLookupResult({
+          found: true,
+          customer: localCust,
+          summary: {
+            total_shopping: Number(localCust.total_purchases || 0),
+            total_bills: 0,
+            current_balance: Number(localCust.current_balance || 0),
+            total_paid: Math.max(
+              0,
+              Number(localCust.total_purchases || 0) - Number(localCust.current_balance || 0)
+            ),
+            credit_limit: Number(localCust.credit_limit || 0),
+          },
+          recent_bills: [],
+        });
+        fetchCustomerDetailsAsync(val);
+        return;
+      }
+
+      // 2. Instant new customer registration if not in local cache
+      const cachedList = getCachedCustomers();
+      if (cachedList.length > 0) {
+        setLookupResult({
+          found: false,
+          phone: val,
+        });
+        setNewName('');
+        fetchCustomerDetailsAsync(val, true);
+        return;
+      }
+
+      // Debounce network fallback to avoid rapid concurrent calls
+      debounceTimerRef.current = setTimeout(() => {
+        handleSearch(val);
+      }, 150);
     } else if (clean.length < 10 && lookupResult) {
       setLookupResult(null);
     }
@@ -114,13 +253,15 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
       onSelectCustomer(customerToUse);
       onClose();
     } else if (onSelectCustomer && !customerToUse) {
-      // Already on billing screen, just close modal without forcing a route navigation/remount
       onClose();
     } else if (customerToUse) {
-      navigate(`/billing?mode=${targetMode}&customerId=${customerToUse.id}&customerName=${encodeURIComponent(customerToUse.name)}&customerPhone=${encodeURIComponent(customerToUse.phone || '')}`);
+      navigate(
+        `/billing?mode=${targetMode}&customerId=${customerToUse.id}&customerName=${encodeURIComponent(
+          customerToUse.name
+        )}&customerPhone=${encodeURIComponent(customerToUse.phone || '')}`
+      );
       onClose();
     } else {
-      // Walk-in without customer from other pages
       navigate(`/billing?mode=${targetMode}`);
       onClose();
     }
@@ -144,6 +285,11 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
       });
 
       const created = res.data.customer;
+
+      // Update local cache so next lookup is instantaneous (0ms)
+      const currentCached = getCachedCustomers();
+      localStorage.setItem('shopbill_cached_customers', JSON.stringify([created, ...currentCached]));
+
       handleProceedToBilling(created);
     } catch (err: any) {
       console.error('Failed to create customer:', err);
@@ -173,7 +319,7 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -209,7 +355,7 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
                 type="button"
                 onClick={() => handleSearch()}
                 disabled={loading || !phone.trim()}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all shrink-0"
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition-all shrink-0 cursor-pointer"
               >
                 {loading ? (
                   <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
@@ -272,20 +418,30 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
                 </div>
 
                 {/* Udhaar / Balance Due */}
-                <div className={`p-3 rounded-xl border ${
-                  Number(lookupResult.summary?.current_balance || 0) > 0
-                    ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800'
-                    : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
-                }`}>
-                  <p className={`text-[10px] font-bold uppercase flex items-center gap-1 ${
-                    Number(lookupResult.summary?.current_balance || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
-                  }`}>
+                <div
+                  className={`p-3 rounded-xl border ${
+                    Number(lookupResult.summary?.current_balance || 0) > 0
+                      ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800'
+                      : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800'
+                  }`}
+                >
+                  <p
+                    className={`text-[10px] font-bold uppercase flex items-center gap-1 ${
+                      Number(lookupResult.summary?.current_balance || 0) > 0
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : 'text-emerald-600 dark:text-emerald-400'
+                    }`}
+                  >
                     <Wallet className="w-3 h-3" />
                     बाकी उधार (Udhaar)
                   </p>
-                  <p className={`text-base sm:text-lg font-black font-mono mt-1 ${
-                    Number(lookupResult.summary?.current_balance || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
-                  }`}>
+                  <p
+                    className={`text-base sm:text-lg font-black font-mono mt-1 ${
+                      Number(lookupResult.summary?.current_balance || 0) > 0
+                        ? 'text-rose-600 dark:text-rose-400'
+                        : 'text-emerald-600 dark:text-emerald-400'
+                    }`}
+                  >
                     {currency}{Number(lookupResult.summary?.current_balance || 0).toLocaleString('en-IN')}
                   </p>
                 </div>
@@ -302,82 +458,42 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
                 </div>
               </div>
 
-              {/* Recent Bills of this Customer */}
-              {lookupResult.recent_bills && lookupResult.recent_bills.length > 0 && (
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-slate-400" />
-                      Previous Purchase History ({lookupResult.recent_bills.length} Recent Bills)
-                    </h4>
-                    {onOpenReturns && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onOpenReturns(undefined, lookupResult.customer?.phone);
-                          onClose();
-                        }}
-                        className="text-[11px] font-bold text-amber-600 hover:text-amber-700 flex items-center gap-1"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                        Return Items from Bill &rarr;
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
-                    {lookupResult.recent_bills.map((bill: any) => (
-                      <div
-                        key={bill.id}
-                        className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-800 text-xs border border-slate-200 dark:border-slate-700"
-                      >
-                        <div>
-                          <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                            {bill.invoice_number}
-                          </span>
-                          <span className="text-slate-400 text-[11px] ml-2">
-                            {new Date(bill.invoice_date).toLocaleDateString('en-IN')}
-                          </span>
-                          <span className="text-slate-500 text-[11px] ml-2">
-                            ({bill.items?.length || 0} items)
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono font-bold text-slate-900 dark:text-white">
-                            {currency}{Number(bill.final_amount).toLocaleString('en-IN')}
-                          </span>
-                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                            bill.payment_status === 'paid'
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
-                              : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
-                          }`}>
-                            {bill.payment_status}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Action buttons */}
-              <div className="pt-2 flex flex-col sm:flex-row gap-2 border-t border-emerald-500/20">
+              {/* Action Buttons */}
+              <div className="pt-2 flex flex-col sm:flex-row gap-2">
                 <button
                   type="button"
                   onClick={() => handleProceedToBilling()}
-                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition-all"
+                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-600/30 transition-all cursor-pointer"
                 >
-                  <Receipt className="w-4 h-4" />
-                  <span>Start New Bill for {lookupResult.customer.name} &rarr;</span>
+                  <span>Continue to Billing (नया बिल बनाएं)</span>
+                  <ArrowRight className="w-4 h-4" />
                 </button>
+
+                {onOpenReturns && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenReturns(undefined, phone);
+                      onClose();
+                    }}
+                    className="py-3 px-4 rounded-xl border-2 border-amber-500/50 hover:bg-amber-50 dark:hover:bg-amber-950/30 text-amber-700 dark:text-amber-400 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-4 h-4 text-amber-600" />
+                    <span>Return / Return Item (सामान वापस करें)</span>
+                  </button>
+                )}
               </div>
             </div>
           )}
 
           {/* ============================================================ */}
-          {/* CASE 2: NEW CUSTOMER (NOT FOUND) -> INSTANT REGISTRATION     */}
+          {/* CASE 2: NEW CUSTOMER REGISTRATION FORM (SHOWN INSTANTLY 0ms) */}
           {/* ============================================================ */}
           {lookupResult && !lookupResult.found && (
-            <form onSubmit={handleCreateNewCustomer} className="bg-blue-50/50 dark:bg-blue-950/20 border-2 border-blue-500/30 rounded-2xl p-4 sm:p-5 space-y-3 animate-fade-in">
+            <form
+              onSubmit={handleCreateNewCustomer}
+              className="bg-blue-50/50 dark:bg-blue-950/20 border-2 border-blue-500/30 rounded-2xl p-4 sm:p-5 space-y-3 animate-fade-in"
+            >
               <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
                 <UserPlus className="w-5 h-5" />
                 <div>
@@ -463,7 +579,7 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
                 <button
                   type="submit"
                   disabled={creatingCustomer || !newName.trim()}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 transition-all"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 transition-all cursor-pointer"
                 >
                   {creatingCustomer ? (
                     <span className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
@@ -476,7 +592,7 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
                 <button
                   type="button"
                   onClick={() => handleProceedToBilling()}
-                  className="py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 transition-colors"
+                  className="py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                 >
                   Skip Saving (Walk-in Cash Bill)
                 </button>
@@ -491,7 +607,7 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
               <button
                 type="button"
                 onClick={() => handleProceedToBilling()}
-                className="font-bold text-emerald-600 hover:text-emerald-700 underline"
+                className="font-bold text-emerald-600 hover:text-emerald-700 underline cursor-pointer"
               >
                 Proceed as Walk-in Customer &rarr;
               </button>
