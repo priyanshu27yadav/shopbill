@@ -15,11 +15,40 @@ use Illuminate\Support\Facades\DB;
 class CustomerController extends Controller
 {
     /**
+     * Clear cached customer listings and lookup caches for this shop.
+     */
+    private function clearCustomerCache($shopId, $phone = null)
+    {
+        Cache::forget("shop_{$shopId}_customers_p1_per50_b0");
+        Cache::forget("shop_{$shopId}_customers_p1_per100_b0");
+        Cache::forget("shop_{$shopId}_customers_p1_per50_b1");
+        Cache::forget("shop_{$shopId}_customers_p1_per100_b1");
+
+        if ($phone) {
+            $cleanPhone = preg_replace('/[^\d]/', '', $phone);
+            $last10 = strlen($cleanPhone) >= 10 ? substr($cleanPhone, -10) : $cleanPhone;
+            Cache::forget("shop_{$shopId}_lookup_phone_" . ($last10 ?: $cleanPhone ?: md5($phone)));
+        }
+    }
+
+    /**
      * List customers with balances.
      */
     public function index(Request $request)
     {
         $shop = $request->get('current_shop');
+        $page = $request->integer('page', 1);
+        $perPage = $request->integer('per_page', 50);
+        $hasBal = $request->boolean('has_balance', false) ? '1' : '0';
+        $cacheKey = "shop_{$shop->id}_customers_p{$page}_per{$perPage}_b{$hasBal}";
+
+        // Fast cache hit if not searching (0ms)
+        if (!$request->filled('search')) {
+            $cached = Cache::get($cacheKey);
+            if ($cached !== null) {
+                return response()->json($cached);
+            }
+        }
 
         $query = Customer::where('shop_id', $shop->id);
 
@@ -37,7 +66,12 @@ class CustomerController extends Controller
         }
 
         $customers = $query->orderBy('name', 'asc')
-            ->paginate($request->integer('per_page', 50));
+            ->paginate($perPage);
+
+        // Cache unfiltered pages for 60 seconds
+        if (!$request->filled('search')) {
+            Cache::put($cacheKey, $customers, 60);
+        }
 
         return response()->json($customers);
     }
@@ -163,6 +197,8 @@ class CustomerController extends Controller
             'notes' => $validated['notes'] ?? null,
         ]);
 
+        $this->clearCustomerCache($shop->id, $customer->phone);
+
         return response()->json([
             'message' => 'Customer created successfully.',
             'customer' => $customer,
@@ -220,6 +256,7 @@ class CustomerController extends Controller
         ]);
 
         $customer->update($validated);
+        $this->clearCustomerCache($shop->id, $customer->phone);
 
         return response()->json([
             'message' => 'Customer updated successfully.',
@@ -254,6 +291,7 @@ class CustomerController extends Controller
 
             $allocatedPayments = [];
             $now = Carbon::now();
+            $paySeq = Payment::where('shop_id', $shop->id)->count() + 1;
 
             // 1. If a specific invoice is targeted by ID
             if (!empty($validated['invoice_id'])) {
@@ -274,7 +312,7 @@ class CustomerController extends Controller
                         'payment_status' => $newStatus,
                     ]);
 
-                    $payNumber = 'PAY-DUE-' . date('Ymd') . '-' . str_pad(Payment::where('shop_id', $shop->id)->count() + 1, 4, '0', STR_PAD_LEFT);
+                    $payNumber = 'PAY-DUE-' . date('Ymd') . '-' . str_pad($paySeq++, 4, '0', STR_PAD_LEFT);
                     $payment = Payment::create([
                         'shop_id' => $shop->id,
                         'customer_id' => $customer->id,
@@ -323,7 +361,7 @@ class CustomerController extends Controller
                         'payment_status' => $newStatus,
                     ]);
 
-                    $payNumber = 'PAY-DUE-' . date('Ymd') . '-' . str_pad(Payment::where('shop_id', $shop->id)->count() + 1, 4, '0', STR_PAD_LEFT);
+                    $payNumber = 'PAY-DUE-' . date('Ymd') . '-' . str_pad($paySeq++, 4, '0', STR_PAD_LEFT);
                     $payment = Payment::create([
                         'shop_id' => $shop->id,
                         'customer_id' => $customer->id,
@@ -350,7 +388,7 @@ class CustomerController extends Controller
 
             // 3. If any leftover advance payment beyond invoice dues
             if ($remaining > 0) {
-                $payNumber = 'PAY-CUST-' . date('Ymd') . '-' . str_pad(Payment::where('shop_id', $shop->id)->count() + 1, 4, '0', STR_PAD_LEFT);
+                $payNumber = 'PAY-CUST-' . date('Ymd') . '-' . str_pad($paySeq++, 4, '0', STR_PAD_LEFT);
                 $payment = Payment::create([
                     'shop_id' => $shop->id,
                     'customer_id' => $customer->id,
@@ -375,12 +413,13 @@ class CustomerController extends Controller
             $customer->current_balance = max(0.00, round(floatval($remainingDue), 2));
             $customer->save();
 
-            // 5. Invalidate caches so Invoice History and Dashboard reflect immediate update
+            // 5. Invalidate caches so Invoice History, Customer List and Dashboard reflect immediate update
             Cache::forget("shop_{$shop->id}_dashboard_cache");
             Cache::forget("shop_{$shop->id}_invoices_page_1");
             Cache::forget("shop_{$shop->id}_invoices_p1_per_25");
             Cache::forget("shop_{$shop->id}_invoices_p1_per_50");
             Cache::forget("shop_{$shop->id}_invoices_p1_per_100");
+            $this->clearCustomerCache($shop->id, $customer->phone);
 
             AuditLog::create([
                 'shop_id' => $shop->id,
@@ -412,7 +451,9 @@ class CustomerController extends Controller
             return response()->json(['message' => 'Cannot delete customer with existing invoices.'], 422);
         }
 
+        $phone = $customer->phone;
         $customer->delete();
+        $this->clearCustomerCache($shop->id, $phone);
 
         return response()->json(['message' => 'Customer deleted successfully.']);
     }

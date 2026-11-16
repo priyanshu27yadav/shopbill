@@ -26,8 +26,27 @@ import { PrintInvoiceModal } from '../Billing/PrintInvoiceModal';
 
 export const CustomerList: React.FC = () => {
   const { shop } = useAuth();
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const cached = localStorage.getItem('shopbill_cached_customers');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      const cached = localStorage.getItem('shopbill_cached_customers');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) return false;
+      }
+    } catch {}
+    return true;
+  });
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterUdhaarOnly, setFilterUdhaarOnly] = useState(false);
 
@@ -37,6 +56,7 @@ export const CustomerList: React.FC = () => {
   const [viewHistoryCustomer, setViewHistoryCustomer] = useState<Customer | null>(null);
   const [customerInvoices, setCustomerInvoices] = useState<any[]>([]);
   const [customerPayments, setCustomerPayments] = useState<any[]>([]);
+  const [loadingLedger, setLoadingLedger] = useState(false);
   const [ledgerTab, setLedgerTab] = useState<'bills' | 'payments'>('bills');
   const [selectedInvoiceForModal, setSelectedInvoiceForModal] = useState<Invoice | null>(null);
   const [invoiceSettings, setInvoiceSettings] = useState<any>(null);
@@ -46,6 +66,15 @@ export const CustomerList: React.FC = () => {
   const [payAmount, setPayAmount] = useState('');
   const [payMethod, setPayMethod] = useState('cash');
   const [payRef, setPayRef] = useState('');
+  const [isSubmittingPayment, setIsSubmittingPayment] = useState(false);
+
+  // Auto-dismiss toast after 3.5s
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
 
   // Add Customer Form
   const [newCustomer, setNewCustomer] = useState({
@@ -59,14 +88,21 @@ export const CustomerList: React.FC = () => {
   });
 
   useEffect(() => {
-    loadCustomers();
+    const hasCached = customers.length > 0;
+    loadCustomers(hasCached);
   }, [shop]);
 
-  const loadCustomers = async () => {
-    setLoading(true);
+  const loadCustomers = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await customerApi.list({ per_page: 100 });
-      setCustomers(res.data.data || []);
+      const list = res.data.data || [];
+      setCustomers(list);
+      try {
+        localStorage.setItem('shopbill_cached_customers', JSON.stringify(list));
+      } catch (e) {
+        console.error('Failed to cache customers:', e);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -84,8 +120,17 @@ export const CustomerList: React.FC = () => {
         credit_limit: parseFloat(newCustomer.credit_limit) || 0,
         opening_balance: parseFloat(newCustomer.opening_balance) || 0,
       });
-      setCustomers([res.data.customer, ...customers]);
+      const created = res.data.customer;
+      const updatedList = [created, ...customers];
+      setCustomers(updatedList);
+      try {
+        localStorage.setItem('shopbill_cached_customers', JSON.stringify(updatedList));
+      } catch {}
       setShowAddModal(false);
+      setToast({
+        type: 'success',
+        message: `✓ Customer "${created.name}" created successfully!`,
+      });
       setNewCustomer({
         name: '',
         phone: '',
@@ -96,7 +141,10 @@ export const CustomerList: React.FC = () => {
         opening_balance: '0',
       });
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Error creating customer.');
+      setToast({
+        type: 'error',
+        message: err.response?.data?.message || 'Error creating customer.',
+      });
     }
   };
 
@@ -104,29 +152,107 @@ export const CustomerList: React.FC = () => {
     e.preventDefault();
     if (!collectPaymentCustomer || !payAmount || parseFloat(payAmount) <= 0) return;
 
+    const amount = parseFloat(payAmount);
+    const targetCust = collectPaymentCustomer;
+    const oldBalance = Number(targetCust.current_balance || 0);
+    const newBalance = Math.max(0, Math.round((oldBalance - amount) * 100) / 100);
+
+    // 1. Instant 0ms Optimistic Update on customer list & cache
+    const updatedCustList = customers.map((c) =>
+      c.id === targetCust.id ? { ...c, current_balance: newBalance } : c
+    );
+    setCustomers(updatedCustList);
     try {
-      const res = await customerApi.collectPayment(collectPaymentCustomer.id, {
-        amount: parseFloat(payAmount),
+      localStorage.setItem('shopbill_cached_customers', JSON.stringify(updatedCustList));
+    } catch {}
+
+    // 2. Optimistic update on current ledger view if open
+    if (viewHistoryCustomer && viewHistoryCustomer.id === targetCust.id) {
+      setViewHistoryCustomer((prev) => (prev ? { ...prev, current_balance: newBalance } : null));
+
+      // Append new payment to ledger payments list
+      const optPayment = {
+        id: Date.now(),
+        payment_number: `PAY-DUE-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`,
+        payment_date: new Date().toISOString(),
+        amount: amount,
+        payment_method: payMethod,
+        reference_number: payRef || null,
+        payment_type: 'due_clearance',
+        notes: `Due cleared via ${payMethod.toUpperCase()}${payRef ? ' (' + payRef + ')' : ''}`,
+      };
+      setCustomerPayments((prev) => [optPayment, ...prev]);
+
+      // Optimistically reduce invoice due balances (FIFO)
+      let remainingAlloc = amount;
+      setCustomerInvoices((prev) =>
+        prev.map((inv) => {
+          const due = Number(inv.balance_due || 0);
+          if (remainingAlloc <= 0 || due <= 0) return inv;
+          const alloc = Math.min(remainingAlloc, due);
+          remainingAlloc = Math.round((remainingAlloc - alloc) * 100) / 100;
+          const newPaid = Math.round((Number(inv.amount_paid || 0) + alloc) * 100) / 100;
+          const newDue = Math.max(0, Math.round((due - alloc) * 100) / 100);
+          return {
+            ...inv,
+            amount_paid: newPaid,
+            balance_due: newDue,
+            payment_status: newDue <= 0 ? 'paid' : 'partial',
+            payments: [
+              ...(inv.payments || []),
+              {
+                id: Date.now() + Math.random(),
+                payment_date: new Date().toISOString(),
+                payment_method: payMethod,
+                amount: alloc,
+              },
+            ],
+          };
+        })
+      );
+    }
+
+    // 3. Immediately close modal & show success toast (0ms UI feedback!)
+    setCollectPaymentCustomer(null);
+    setPayAmount('');
+    setPayRef('');
+    setToast({
+      type: 'success',
+      message: `✓ Received ${currency}${amount.toLocaleString('en-IN')} from ${targetCust.name}. Remaining Udhaar: ${currency}${newBalance.toLocaleString('en-IN')}`,
+    });
+
+    // 4. Asynchronously commit to backend in background
+    try {
+      const res = await customerApi.collectPayment(targetCust.id, {
+        amount: amount,
         payment_method: payMethod,
         reference_number: payRef || null,
       });
-      alert(res.data.message);
-      const updatedCust = { ...collectPaymentCustomer, current_balance: res.data.updated_balance };
-      setCollectPaymentCustomer(null);
-      setPayAmount('');
-      setPayRef('');
-      loadCustomers();
-      if (viewHistoryCustomer && viewHistoryCustomer.id === collectPaymentCustomer.id) {
-        handleOpenHistory(updatedCust);
+
+      // Reconcile with exact server balance if returned
+      if (res.data?.updated_balance !== undefined) {
+        const finalBal = Number(res.data.updated_balance);
+        setCustomers((prev) =>
+          prev.map((c) => (c.id === targetCust.id ? { ...c, current_balance: finalBal } : c))
+        );
+        if (viewHistoryCustomer && viewHistoryCustomer.id === targetCust.id) {
+          setViewHistoryCustomer((prev) => (prev ? { ...prev, current_balance: finalBal } : null));
+        }
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to record payment.');
+      console.error('Failed to sync payment with server:', err);
+      setToast({
+        type: 'error',
+        message: err.response?.data?.message || 'Payment recorded locally, background sync failed.',
+      });
+      loadCustomers(true);
     }
   };
 
   const handleOpenHistory = async (c: Customer) => {
     setViewHistoryCustomer(c);
     setLedgerTab('bills');
+    setLoadingLedger(true);
     try {
       const res = await customerApi.get(c.id);
       setViewHistoryCustomer(res.data.customer || c);
@@ -134,6 +260,8 @@ export const CustomerList: React.FC = () => {
       setCustomerPayments(res.data.payments || []);
     } catch (err) {
       console.error(err);
+    } finally {
+      setLoadingLedger(false);
     }
   };
 
@@ -171,6 +299,23 @@ export const CustomerList: React.FC = () => {
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* Non-blocking Floating Toast Banner */}
+      {toast && (
+        <div className={`fixed top-5 right-5 z-50 flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold text-white animate-in slide-in-from-top-3 duration-200 ${
+          toast.type === 'success' ? 'bg-emerald-600 shadow-emerald-600/30' : 'bg-rose-600 shadow-rose-600/30'
+        }`}>
+          {toast.type === 'success' ? (
+            <CheckCircle className="w-4 h-4 text-emerald-200 shrink-0" />
+          ) : (
+            <AlertCircle className="w-4 h-4 text-rose-200 shrink-0" />
+          )}
+          <span>{toast.message}</span>
+          <button onClick={() => setToast(null)} className="ml-2 hover:opacity-80">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header & Stats */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -255,54 +400,69 @@ export const CustomerList: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {filtered.map((c) => {
-                const bal = Number(c.current_balance);
-                return (
-                  <tr key={c.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
-                    <td className="py-3 px-4">
-                      <p className="font-bold text-slate-800 dark:text-slate-100">{c.name}</p>
-                      {c.address && <p className="text-[10px] text-slate-400 truncate max-w-xs">{c.address}</p>}
-                    </td>
-                    <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-300">
-                      {c.phone || '—'}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono font-semibold">
-                      {currency}{Number(c.total_purchases).toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono">
-                      {bal > 0 ? (
-                        <span className="font-extrabold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md">
-                          {currency}{bal.toFixed(2)}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">₹0.00</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-slate-400">
-                      {currency}{Number(c.credit_limit).toFixed(2)}
-                    </td>
-                    <td className="py-3 px-4 text-right space-x-2">
-                      {bal > 0 && (
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="text-center py-12 text-slate-400">
+                    {loading ? (
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                        <span className="text-xs">Loading customer khata accounts...</span>
+                      </div>
+                    ) : (
+                      <span>No customer profiles found.</span>
+                    )}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((c) => {
+                  const bal = Number(c.current_balance);
+                  return (
+                    <tr key={c.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                      <td className="py-3 px-4">
+                        <p className="font-bold text-slate-800 dark:text-slate-100">{c.name}</p>
+                        {c.address && <p className="text-[10px] text-slate-400 truncate max-w-xs">{c.address}</p>}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-slate-600 dark:text-slate-300">
+                        {c.phone || '—'}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono font-semibold">
+                        {currency}{Number(c.total_purchases).toFixed(2)}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono">
+                        {bal > 0 ? (
+                          <span className="font-extrabold text-rose-600 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-md">
+                            {currency}{bal.toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">₹0.00</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-400">
+                        {currency}{Number(c.credit_limit).toFixed(2)}
+                      </td>
+                      <td className="py-3 px-4 text-right space-x-2">
+                        {bal > 0 && (
+                          <button
+                            onClick={() => {
+                              setCollectPaymentCustomer(c);
+                              setPayAmount(bal.toString());
+                            }}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all"
+                          >
+                            Collect Payment
+                          </button>
+                        )}
                         <button
-                          onClick={() => {
-                            setCollectPaymentCustomer(c);
-                            setPayAmount(bal.toString());
-                          }}
-                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all"
+                          onClick={() => handleOpenHistory(c)}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
                         >
-                          Collect Payment
+                          Ledger
                         </button>
-                      )}
-                      <button
-                        onClick={() => handleOpenHistory(c)}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
-                      >
-                        Ledger
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
@@ -504,7 +664,12 @@ export const CustomerList: React.FC = () => {
             {/* Tab 1: Bills & Purchases */}
             {ledgerTab === 'bills' && (
               <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-                {customerInvoices.length === 0 ? (
+                {loadingLedger ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                    <span className="text-xs">Loading purchase bills...</span>
+                  </div>
+                ) : customerInvoices.length === 0 ? (
                   <p className="text-xs text-slate-400 text-center py-12">No purchases or bills recorded yet.</p>
                 ) : (
                   customerInvoices.map((inv) => {
@@ -655,7 +820,12 @@ export const CustomerList: React.FC = () => {
             {/* Tab 2: Payment Receipts */}
             {ledgerTab === 'payments' && (
               <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                {customerPayments.length === 0 ? (
+                {loadingLedger ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-slate-400 gap-2">
+                    <Loader2 className="w-5 h-5 animate-spin text-emerald-600" />
+                    <span className="text-xs">Loading payment receipts...</span>
+                  </div>
+                ) : customerPayments.length === 0 ? (
                   <p className="text-xs text-slate-400 text-center py-12">No payments received yet.</p>
                 ) : (
                   customerPayments.map((p: any) => (
