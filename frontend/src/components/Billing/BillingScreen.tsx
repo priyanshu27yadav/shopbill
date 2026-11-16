@@ -758,25 +758,25 @@ export const BillingScreen: React.FC = () => {
       });
   }, [calculations.finalAmount, upiId, shopName, paymentMethod]);
 
-  // Generate Bill Function (Only runs after payment is completed and owner clicks Generate Receipt)
-  const handleGenerateBill = async () => {
+  // Generate Bill Function (Runs immediately in 0ms with optimistic receipt modal)
+  const handleGenerateBill = async (bypassPaidCheck = false) => {
     if (cartItems.length === 0) {
       alert('Cannot generate an empty bill. Please add items first.');
       return;
     }
 
-    if (paymentStatus !== 'paid') {
-      confirmPaymentCompleted();
+    if (!bypassPaidCheck && paymentStatus !== 'paid' && paymentMethod !== 'credit') {
+      confirmPaymentCompleted(true);
       return;
     }
 
-    setIsSubmitting(true);
-    setPaymentStatus('generating');
+    const paidAmount = paymentMethod === 'credit' ? 0 : parseFloat(amountReceived) || calculations.finalAmount;
+    const balDue = paymentMethod === 'credit' ? calculations.finalAmount : Math.max(0, calculations.finalAmount - paidAmount);
 
     const payload = {
       billing_mode: billingMode,
       invoice_type: shop?.is_gst_registered ? 'gst' : 'retail',
-      customer_id: selectedCustomer?.id && selectedCustomer.id > 0 ? selectedCustomer.id : null,
+      customer_id: selectedCustomer?.id && selectedCustomer.id > 0 && selectedCustomer.id < 1000000000 ? selectedCustomer.id : null,
       customer_name: customerName || 'Walk-in Customer',
       customer_phone: customerPhone || null,
       customer_address: customerAddress || null,
@@ -784,7 +784,7 @@ export const BillingScreen: React.FC = () => {
       overall_discount_type: overallDiscountType,
       overall_discount_value: overallDiscountValue,
       payment_method: paymentMethod,
-      amount_paid: paymentMethod === 'credit' ? 0 : parseFloat(amountReceived) || calculations.finalAmount,
+      amount_paid: paidAmount,
       notes: billNotes || null,
       items: cartItems.map((it) => ({
         product_id: it.product_id,
@@ -802,61 +802,101 @@ export const BillingScreen: React.FC = () => {
       })),
     };
 
-    try {
-      let createdBill;
-      if (isOnline) {
-        const res = await invoiceApi.create(payload);
-        createdBill = res.data.invoice;
-      } else {
-        createdBill = await saveOfflineInvoice({
-          ...payload,
-          subtotal: calculations.subtotal,
-          item_discount_total: calculations.itemDiscountTotal,
-          overall_discount_amount: calculations.overallDiscountAmount,
-          total_discount: calculations.totalDiscount,
-          taxable_amount: calculations.taxableAmount,
-          total_tax: calculations.totalTax,
-          round_off: calculations.roundOff,
-          final_amount: calculations.finalAmount,
+    // Construct 0ms Instant Optimistic Invoice so receipt modal pops up immediately
+    const optimisticInvoice: any = {
+      id: Date.now(),
+      invoice_number: `SB-${String(Date.now()).slice(-4)}`,
+      invoice_date: new Date().toISOString(),
+      billing_mode: billingMode,
+      invoice_type: shop?.is_gst_registered ? 'gst' : 'retail',
+      customer_name: customerName || 'Walk-in Customer',
+      customer_phone: customerPhone || null,
+      customer_address: customerAddress || null,
+      customer_gstin: customerGstin || selectedCustomer?.gstin || null,
+      subtotal: calculations.subtotal,
+      item_discount_total: calculations.itemDiscountTotal,
+      overall_discount_amount: calculations.overallDiscountAmount,
+      total_discount: calculations.totalDiscount,
+      taxable_amount: calculations.taxableAmount,
+      total_tax: calculations.totalTax,
+      round_off: calculations.roundOff,
+      final_amount: calculations.finalAmount,
+      amount_paid: paidAmount,
+      balance_due: balDue,
+      payment_method: paymentMethod,
+      payment_status: paymentMethod === 'credit' ? 'credit' : (balDue > 0 ? 'partial' : 'paid'),
+      notes: billNotes || null,
+      items: cartItems.map((it) => ({
+        ...it,
+        subtotal: it.subtotal || it.quantity * it.unit_price,
+      })),
+      payments: paidAmount > 0 ? [
+        {
+          payment_method: paymentMethod === 'credit' ? 'cash' : paymentMethod,
+          amount: paidAmount,
+          payment_date: new Date().toISOString(),
+          payment_type: 'invoice_payment',
+        }
+      ] : [],
+      shop: shop,
+    };
+
+    // Open receipt modal immediately in 0ms!
+    setCompletedInvoice(optimisticInvoice);
+
+    // Reset billing screen state immediately in 0ms for cashier efficiency
+    const curCustName = customerName;
+    const curCustPhone = customerPhone;
+    setCartItems([]);
+    setSelectedCustomer(null);
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerAddress('');
+    setCustomerGstin('');
+    setOverallDiscountValue(0);
+    setAmountReceived('');
+    setBillNotes('');
+    setShowQrModal(false);
+    setPaymentStatus('idle');
+    setAutoDetectSeconds(null);
+    if (shop) {
+      localStorage.removeItem(`shopbill_active_draft_${shop.id}`);
+    }
+    localStorage.removeItem('shopbill_active_draft');
+
+    // Run API call in background
+    if (isOnline) {
+      invoiceApi.create(payload)
+        .then((res) => {
+          if (res.data?.invoice) {
+            setCompletedInvoice((prev: any) => ({
+              ...res.data.invoice,
+              shop: shop,
+              customer_name: curCustName || res.data.invoice.customer_name || 'Walk-in Customer',
+              customer_phone: curCustPhone || res.data.invoice.customer_phone,
+            }));
+          }
+        })
+        .catch((err) => {
+          console.error('Background invoice sync error:', err);
         });
-      }
-
-      setCompletedInvoice({
-        ...createdBill,
-        customer_name: customerName || createdBill.customer_name || 'Walk-in Customer',
-        customer_phone: customerPhone || createdBill.customer_phone,
-        customer_address: customerAddress || createdBill.customer_address,
-        customer_gstin: customerGstin || createdBill.customer_gstin,
+    } else {
+      saveOfflineInvoice({
+        ...payload,
+        subtotal: calculations.subtotal,
+        item_discount_total: calculations.itemDiscountTotal,
+        overall_discount_amount: calculations.overallDiscountAmount,
+        total_discount: calculations.totalDiscount,
+        taxable_amount: calculations.taxableAmount,
+        total_tax: calculations.totalTax,
+        round_off: calculations.roundOff,
+        final_amount: calculations.finalAmount,
       });
-
-      // Reset cart for next bill
-      setCartItems([]);
-      setSelectedCustomer(null);
-      setCustomerName('');
-      setCustomerPhone('');
-      setCustomerAddress('');
-      setCustomerGstin('');
-      setOverallDiscountValue(0);
-      setAmountReceived('');
-      setBillNotes('');
-      setShowQrModal(false);
-      setPaymentStatus('idle');
-      setAutoDetectSeconds(null);
-      if (shop) {
-        localStorage.removeItem(`shopbill_active_draft_${shop.id}`);
-      }
-      localStorage.removeItem('shopbill_active_draft');
-    } catch (err: any) {
-      console.error('Invoice creation failed:', err);
-      alert(err.response?.data?.message || 'Failed to generate invoice. Please check fields.');
-      setPaymentStatus('waiting');
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
   // Complete & Confirm payment received (Invoice will generate ONLY when owner clicks Generate Receipt)
-  const confirmPaymentCompleted = () => {
+  const confirmPaymentCompleted = (autoGenerate = false) => {
     if (cartItems.length === 0 || isSubmitting) return;
 
     if (paymentMethod === 'upi') {
@@ -865,6 +905,10 @@ export const BillingScreen: React.FC = () => {
 
     setPaymentStatus('paid');
     setShowQrModal(false);
+
+    if (autoGenerate) {
+      handleGenerateBill(true);
+    }
   };
 
   // Reset payment completed state if items or amount change
@@ -1570,7 +1614,7 @@ export const BillingScreen: React.FC = () => {
                     <div className="pt-1.5 border-t border-emerald-200/60 dark:border-emerald-800/60">
                       <button
                         type="button"
-                        onClick={confirmPaymentCompleted}
+                        onClick={() => confirmPaymentCompleted()}
                         disabled={cartItems.length === 0 || isSubmitting}
                         className={`w-full py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs ${
                           paymentStatus === 'paid'
@@ -1623,19 +1667,25 @@ export const BillingScreen: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={confirmPaymentCompleted}
+                      onClick={() => {
+                        if (paymentStatus === 'paid') {
+                          handleGenerateBill(true);
+                        } else {
+                          confirmPaymentCompleted(true);
+                        }
+                      }}
                       disabled={cartItems.length === 0 || isSubmitting}
-                      className={`w-full py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                      className={`w-full py-2.5 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer ${
                         paymentStatus === 'paid'
-                          ? 'bg-emerald-700 text-white ring-2 ring-emerald-400/50'
+                          ? 'bg-emerald-700 hover:bg-emerald-800 text-white ring-2 ring-emerald-400/50'
                           : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white'
                       }`}
                     >
                       <CheckCircle2 className="w-4 h-4 text-emerald-200" />
                       <span>
                         {paymentStatus === 'paid'
-                          ? `✓ Cash Received (${currency}${amountReceived || calculations.finalAmount})`
-                          : `Confirm Cash Payment Received (${currency}${amountReceived || calculations.finalAmount})`}
+                          ? `✓ Cash Received • Open Receipt (${currency}${amountReceived || calculations.finalAmount})`
+                          : `Confirm Cash & Generate Receipt (${currency}${amountReceived || calculations.finalAmount})`}
                       </span>
                     </button>
                   </div>
@@ -1646,19 +1696,25 @@ export const BillingScreen: React.FC = () => {
                   <div className="pt-1">
                     <button
                       type="button"
-                      onClick={confirmPaymentCompleted}
+                      onClick={() => {
+                        if (paymentStatus === 'paid') {
+                          handleGenerateBill(true);
+                        } else {
+                          confirmPaymentCompleted(true);
+                        }
+                      }}
                       disabled={cartItems.length === 0 || isSubmitting}
-                      className={`w-full py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                      className={`w-full py-2.5 px-3 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer ${
                         paymentStatus === 'paid'
-                          ? 'bg-emerald-700 text-white ring-2 ring-emerald-400/50'
+                          ? 'bg-emerald-700 hover:bg-emerald-800 text-white ring-2 ring-emerald-400/50'
                           : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white'
                       }`}
                     >
                       <CheckCircle2 className="w-4 h-4 text-emerald-200" />
                       <span>
                         {paymentStatus === 'paid'
-                          ? `✓ ${paymentMethod === 'card' ? 'Card' : 'Bank'} Payment Completed`
-                          : `Confirm ${paymentMethod === 'card' ? 'Card' : 'Bank'} Payment (${currency}${calculations.finalAmount})`}
+                          ? `✓ Payment Completed • Open Receipt`
+                          : `Confirm & Generate Receipt (${currency}${calculations.finalAmount})`}
                       </span>
                     </button>
                   </div>
@@ -1669,7 +1725,7 @@ export const BillingScreen: React.FC = () => {
                   <div className="pt-1">
                     <button
                       type="button"
-                      onClick={confirmPaymentCompleted}
+                      onClick={() => confirmPaymentCompleted()}
                       disabled={cartItems.length === 0 || isSubmitting}
                       className={`w-full py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs ${
                         paymentStatus === 'paid'
@@ -1803,21 +1859,21 @@ export const BillingScreen: React.FC = () => {
                   <button
                     type="button"
                     disabled={cartItems.length === 0 || isSubmitting}
-                    onClick={handleGenerateBill}
-                    className="w-full py-3 rounded-xl text-sm font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 ring-2 ring-emerald-400"
+                    onClick={() => handleGenerateBill()}
+                    className="w-full py-3 rounded-xl text-sm font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 ring-2 ring-emerald-400 cursor-pointer"
                   >
                     <Receipt className="w-5 h-5 text-emerald-100" />
-                    <span>{isSubmitting ? 'Generating Receipt...' : 'Generate Receipt & Print (Ctrl+Enter)'}</span>
+                    <span>Generate Receipt & Print (Ctrl+Enter)</span>
                   </button>
                 ) : (
                   <button
                     type="button"
                     disabled={cartItems.length === 0 || isSubmitting}
-                    onClick={confirmPaymentCompleted}
-                    className="w-full py-2.5 rounded-xl text-xs font-extrabold bg-slate-800 hover:bg-slate-700 text-white shadow-sm transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
+                    onClick={() => confirmPaymentCompleted(true)}
+                    className="w-full py-2.5 rounded-xl text-xs font-extrabold bg-slate-800 hover:bg-slate-700 text-white shadow-sm transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                    <span>Complete Payment Above to Generate Receipt</span>
+                    <span>Confirm Payment & Generate Receipt</span>
                   </button>
                 )}
               </div>
@@ -1901,7 +1957,7 @@ export const BillingScreen: React.FC = () => {
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={confirmPaymentCompleted}
+                onClick={() => confirmPaymentCompleted(true)}
                 disabled={cartItems.length === 0 || isSubmitting}
                 className="w-full py-3 text-xs sm:text-sm font-black rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
               >

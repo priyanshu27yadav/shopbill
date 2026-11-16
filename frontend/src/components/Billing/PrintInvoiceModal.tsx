@@ -131,17 +131,16 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                   {/* Shop Details Header */}
                   <div className="p-4 text-center border-b border-slate-400">
                     <h1 className="text-2xl font-black text-[#00c988] tracking-tight">
-                      {shop?.name || 'Akash Enterprises'}
+                      {shop?.name || 'Retail Store'}
                     </h1>
-                    <p className="text-xs text-slate-600 mt-0.5">
-                      {[shop?.address_line1, shop?.address_line2, shop?.city, shop?.state, shop?.pincode].filter(Boolean).join(', ') || 'Ajmer Road, Jaipur, Rajasthan 301202'}
-                    </p>
+                    {[shop?.address_line1, shop?.address_line2, shop?.city, shop?.state, shop?.pincode].filter(Boolean).length > 0 && (
+                      <p className="text-xs text-slate-600 mt-0.5">
+                        {[shop?.address_line1, shop?.address_line2, shop?.city, shop?.state, shop?.pincode].filter(Boolean).join(', ')}
+                      </p>
+                    )}
                     <div className="flex flex-wrap items-center justify-center gap-6 text-xs font-semibold text-slate-700 mt-2">
-                      <span>Phone: {shop?.phone || '+91 99810278197'}</span>
+                      {shop?.phone && <span>Phone: {shop.phone}</span>}
                       {shop?.gstin && <span>GSTIN: {shop.gstin}</span>}
-                      <span>
-                        PAN Number: {shop?.gstin ? shop.gstin.substring(2, 12) : 'AVHPC9999A'}
-                      </span>
                     </div>
                   </div>
 
@@ -168,21 +167,10 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                         </p>
                       )}
                       {invoice.customer_gstin && (
-                        <p className="text-slate-700">
-                          PAN Number:{' '}
-                          {invoice.customer_gstin.length >= 12
-                            ? invoice.customer_gstin.substring(2, 12)
-                            : invoice.customer_gstin}
-                        </p>
-                      )}
-                      {invoice.customer_gstin && (
                         <p className="text-slate-700 font-semibold">
                           GSTIN: {invoice.customer_gstin}
                         </p>
                       )}
-                      <p className="text-slate-700">
-                        Place of Supply: {shop?.state || 'Rajasthan'}
-                      </p>
                     </div>
 
                     {/* Right: Invoice No & Date */}
@@ -342,23 +330,19 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                           </tr>
                         )}
 
-                        {/* Due Balance */}
-                        <tr className="text-xs font-semibold">
-                          <td colSpan={5} className="py-1.5 px-3 text-right border-r border-slate-400 text-slate-700">
-                            Due Balance (शेष उधार)
-                          </td>
-                          <td className="py-1.5 px-3 text-right font-mono font-bold">
-                            {balanceDue > 0 ? (
+                        {/* Due Balance - Only shown when amount is actually due */}
+                        {balanceDue > 0 && (
+                          <tr className="text-xs font-semibold">
+                            <td colSpan={5} className="py-1.5 px-3 text-right border-r border-slate-400 text-slate-700">
+                              Due Balance (शेष उधार)
+                            </td>
+                            <td className="py-1.5 px-3 text-right font-mono font-bold">
                               <span className="text-rose-600 font-extrabold bg-rose-50 px-2 py-0.5 rounded">
                                 Rs. {balanceDue.toFixed(2)}
                               </span>
-                            ) : (
-                              <span className="text-emerald-700 font-extrabold bg-emerald-50 px-2 py-0.5 rounded">
-                                Rs. 0.00 (चुकता / Cleared)
-                              </span>
-                            )}
-                          </td>
-                        </tr>
+                            </td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -389,7 +373,7 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                     <div>
                       <p className="text-[11px] font-semibold text-slate-700">Authorised Signatory For</p>
                       <p className="font-black text-xs text-slate-900 mt-1">
-                        {shop?.name || 'Akash Enterprises'}
+                        {shop?.name || 'Authorized Store'}
                       </p>
                     </div>
                   </div>
@@ -491,12 +475,15 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
                       <span className="font-mono font-bold">Rs.{amountPaid.toFixed(2)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between pt-0.5 font-bold">
-                    <span>Due Balance:</span>
-                    <span className={`font-mono ${balanceDue > 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                      Rs.{balanceDue.toFixed(2)} {balanceDue <= 0 ? '(Cleared)' : ''}
-                    </span>
-                  </div>
+                  {/* Due Balance - Only displayed if amount is actually due */}
+                  {balanceDue > 0 && (
+                    <div className="flex justify-between pt-0.5 font-bold">
+                      <span>Due Balance:</span>
+                      <span className="font-mono text-rose-600">
+                        Rs.{balanceDue.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer */}

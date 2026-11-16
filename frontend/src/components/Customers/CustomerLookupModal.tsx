@@ -91,7 +91,7 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
     );
   };
 
-  // Reset when modal opens
+  // Reset when modal opens & pre-warm cache
   useEffect(() => {
     if (isOpen) {
       setPhone('');
@@ -102,6 +102,14 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
       setCreateError('');
       inFlightRef.current = null;
     }
+    // Warm up the local customer cache
+    try {
+      customerApi.list({ per_page: 200 }).then((res: any) => {
+        if (res.data?.customers) {
+          localStorage.setItem('shopbill_cached_customers', JSON.stringify(res.data.customers));
+        }
+      }).catch(() => {});
+    } catch {}
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -162,9 +170,8 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
       return;
     }
 
-    // 2. If cached list is populated and number is 10 digits and not in it, it's immediately a new customer!
-    const cachedList = getCachedCustomers();
-    if (cachedList.length > 0 && clean.length === 10) {
+    // 2. If 10 digits entered and not in cache, show New Customer registration in 0ms!
+    if (clean.length === 10) {
       setLookupResult({
         found: false,
         phone: p,
@@ -174,7 +181,7 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
       return;
     }
 
-    // 3. Fallback to API if not in cache
+    // 3. Fallback to API for partial phone numbers
     if (inFlightRef.current === clean) return;
     inFlightRef.current = clean;
     setLoading(true);
@@ -226,22 +233,13 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
         return;
       }
 
-      // 2. Instant new customer registration if not in local cache
-      const cachedList = getCachedCustomers();
-      if (cachedList.length > 0) {
-        setLookupResult({
-          found: false,
-          phone: val,
-        });
-        setNewName('');
-        fetchCustomerDetailsAsync(val, true);
-        return;
-      }
-
-      // Debounce network fallback to avoid rapid concurrent calls
-      debounceTimerRef.current = setTimeout(() => {
-        handleSearch(val);
-      }, 150);
+      // 2. Instant new customer registration in 0ms (no blocking spinner!)
+      setLookupResult({
+        found: false,
+        phone: val,
+      });
+      setNewName('');
+      fetchCustomerDetailsAsync(val, true);
     } else if (clean.length < 10 && lookupResult) {
       setLookupResult(null);
     }
@@ -249,10 +247,22 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
 
   const handleProceedToBilling = (cust?: Customer) => {
     const customerToUse = cust || lookupResult?.customer;
-    if (onSelectCustomer && customerToUse) {
-      onSelectCustomer(customerToUse);
-      onClose();
-    } else if (onSelectCustomer && !customerToUse) {
+    if (onSelectCustomer) {
+      if (customerToUse) {
+        onSelectCustomer(customerToUse);
+      } else if (phone.trim()) {
+        onSelectCustomer({
+          id: 0,
+          shop_id: shop?.id || 0,
+          name: newName.trim() || 'Walk-in Customer',
+          phone: phone.trim(),
+          address: newAddress.trim() || undefined,
+          gstin: newGstin.trim() || undefined,
+          credit_limit: 0,
+          current_balance: 0,
+          total_purchases: 0,
+        });
+      }
       onClose();
     } else if (customerToUse) {
       navigate(
@@ -262,7 +272,11 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
       );
       onClose();
     } else {
-      navigate(`/billing?mode=${targetMode}`);
+      navigate(
+        `/billing?mode=${targetMode}${
+          phone.trim() ? `&customerPhone=${encodeURIComponent(phone.trim())}` : ''
+        }`
+      );
       onClose();
     }
   };
@@ -274,29 +288,54 @@ export const CustomerLookupModal: React.FC<CustomerLookupModalProps> = ({
       return;
     }
 
-    setCreatingCustomer(true);
-    setCreateError('');
-    try {
-      const res = await customerApi.create({
-        name: newName.trim(),
-        phone: phone.trim() || null,
-        address: newAddress.trim() || null,
-        gstin: newGstin.trim() || null,
+    const trimmedName = newName.trim();
+    const cleanPhone = phone.trim();
+    const cleanAddress = newAddress.trim() || undefined;
+    const cleanGstin = newGstin.trim() || undefined;
+
+    // 0ms instant optimistic customer creation
+    const tempCustomer: Customer = {
+      id: Date.now(),
+      shop_id: shop?.id || 0,
+      name: trimmedName,
+      phone: cleanPhone || undefined,
+      address: cleanAddress,
+      gstin: cleanGstin,
+      credit_limit: 0,
+      current_balance: 0,
+      total_purchases: 0,
+    };
+
+    // Update local cache immediately
+    const currentCached = getCachedCustomers();
+    localStorage.setItem(
+      'shopbill_cached_customers',
+      JSON.stringify([tempCustomer, ...currentCached])
+    );
+
+    // Proceed to billing immediately in 0ms!
+    handleProceedToBilling(tempCustomer);
+
+    // Background sync without blocking user
+    customerApi
+      .create({
+        name: trimmedName,
+        phone: cleanPhone || null,
+        address: cleanAddress,
+        gstin: cleanGstin,
+      })
+      .then((res) => {
+        if (res.data?.customer) {
+          const realCustomer = res.data.customer;
+          const updated = getCachedCustomers().map((c) =>
+            c.id === tempCustomer.id ? realCustomer : c
+          );
+          localStorage.setItem('shopbill_cached_customers', JSON.stringify(updated));
+        }
+      })
+      .catch((err) => {
+        console.warn('Background customer save error:', err);
       });
-
-      const created = res.data.customer;
-
-      // Update local cache so next lookup is instantaneous (0ms)
-      const currentCached = getCachedCustomers();
-      localStorage.setItem('shopbill_cached_customers', JSON.stringify([created, ...currentCached]));
-
-      handleProceedToBilling(created);
-    } catch (err: any) {
-      console.error('Failed to create customer:', err);
-      setCreateError(err.response?.data?.message || 'Failed to save customer');
-    } finally {
-      setCreatingCustomer(false);
-    }
   };
 
   return (

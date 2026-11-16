@@ -126,7 +126,7 @@ class InvoiceController extends Controller
             'billing_mode' => 'required|string|in:catalogue,custom,mixed',
             'invoice_type' => 'required|string|in:retail,gst',
             'invoice_date' => 'nullable|date',
-            'customer_id' => 'nullable|exists:customers,id',
+            'customer_id' => 'nullable',
             'customer_name' => 'nullable|string|max:255',
             'customer_phone' => 'nullable|string|max:20',
             'customer_gstin' => 'nullable|string|max:20',
@@ -171,9 +171,10 @@ class InvoiceController extends Controller
         return DB::transaction(function () use ($shop, $user, $validated, $request) {
             // Customer resolution or creation if phone provided
             $customer = null;
-            if (!empty($validated['customer_id'])) {
+            if (!empty($validated['customer_id']) && is_numeric($validated['customer_id']) && $validated['customer_id'] < 1000000000) {
                 $customer = Customer::where('shop_id', $shop->id)->where('id', $validated['customer_id'])->first();
-            } elseif (!empty($validated['customer_phone'])) {
+            }
+            if (!$customer && !empty($validated['customer_phone'])) {
                 $customer = Customer::where('shop_id', $shop->id)->where('phone', $validated['customer_phone'])->first();
                 if (!$customer && !empty($validated['customer_name'])) {
                     $customer = Customer::create([
@@ -186,7 +187,7 @@ class InvoiceController extends Controller
                 }
             }
 
-            // Generate unique invoice number
+            // Generate unique invoice number quickly
             $invoiceSetting = InvoiceSetting::firstOrCreate(
                 ['shop_id' => $shop->id],
                 ['invoice_prefix' => 'SB-', 'next_invoice_number' => 1]
@@ -196,10 +197,15 @@ class InvoiceController extends Controller
             $nextNum = $invoiceSetting->next_invoice_number ?: 1;
             $invoiceNumber = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
 
-            // Ensure uniqueness
-            while (Invoice::where('shop_id', $shop->id)->where('invoice_number', $invoiceNumber)->exists()) {
-                $nextNum++;
+            // Fast uniqueness guarantee
+            if (Invoice::where('shop_id', $shop->id)->where('invoice_number', $invoiceNumber)->exists()) {
+                $maxNum = Invoice::where('shop_id', $shop->id)->count() + 1;
+                $nextNum = max($nextNum + 1, $maxNum);
                 $invoiceNumber = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
+                while (Invoice::where('shop_id', $shop->id)->where('invoice_number', $invoiceNumber)->exists()) {
+                    $nextNum++;
+                    $invoiceNumber = $prefix . str_pad($nextNum, 4, '0', STR_PAD_LEFT);
+                }
             }
             $invoiceSetting->update(['next_invoice_number' => $nextNum + 1]);
 
@@ -372,15 +378,22 @@ class InvoiceController extends Controller
                 'sync_id' => $validated['sync_id'] ?? null,
             ]);
 
-            // Save items
+            // Save items in a single fast batch query
+            $now = Carbon::now();
+            $batchItems = [];
             foreach ($processedItems as $item) {
                 $item['invoice_id'] = $invoice->id;
-                InvoiceItem::create($item);
+                $item['created_at'] = $now;
+                $item['updated_at'] = $now;
+                $batchItems[] = $item;
+            }
+            if (!empty($batchItems)) {
+                InvoiceItem::insert($batchItems);
             }
 
             // Record Payment if paid
             if ($amountPaid > 0) {
-                $payNumber = 'PAY-' . date('Ymd') . '-' . str_pad(Payment::where('shop_id', $shop->id)->count() + 1, 4, '0', STR_PAD_LEFT);
+                $payNumber = 'PAY-' . date('Ymd') . '-' . substr(str_shuffle("0123456789"), 0, 4) . '-' . (time() % 10000);
                 $payment = Payment::create([
                     'shop_id' => $shop->id,
                     'invoice_id' => $invoice->id,

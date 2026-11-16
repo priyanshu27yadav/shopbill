@@ -107,59 +107,148 @@ export const ReportsScreen: React.FC = () => {
 
   const exportToCsv = () => {
     if (!currentReportData) return;
-    let csvContent = 'data:text/csv;charset=utf-8,';
+    const rows: string[] = [];
+
+    const escapeCsv = (str: any) => {
+      if (str === null || str === undefined) return '""';
+      const s = String(str).replace(/"/g, '""');
+      return `"${s}"`;
+    };
 
     if (activeTab === 'daily' && currentReportData.invoices) {
-      csvContent += 'Invoice #,Date,Customer,Subtotal,Discount,Final Amount,Payment Mode,Status\n';
+      rows.push('Bill No,Date,Customer Name,Customer Phone,Subtotal,Discount,Tax,Final Amount,Amount Paid,Due Balance,Payment Mode,Status');
       currentReportData.invoices.forEach((inv: any) => {
-        csvContent += `"${inv.invoice_number}","${inv.invoice_date}","${inv.customer_name || 'Cash Customer'}","${inv.subtotal}","${inv.total_discount}","${inv.final_amount}","${inv.payment_method}","${inv.status}"\n`;
+        const d = inv.invoice_date?.split('T')[0] || inv.invoice_date || '';
+        rows.push([
+          escapeCsv(inv.invoice_number),
+          escapeCsv(d),
+          escapeCsv(inv.customer_name || 'Walk-in Customer'),
+          escapeCsv(inv.customer_phone || ''),
+          Number(inv.subtotal || 0).toFixed(2),
+          Number(inv.total_discount || 0).toFixed(2),
+          Number(inv.total_tax || 0).toFixed(2),
+          Number(inv.final_amount || 0).toFixed(2),
+          Number(inv.amount_paid || 0).toFixed(2),
+          Number(inv.balance_due || 0).toFixed(2),
+          escapeCsv(String(inv.payment_method || '').toUpperCase()),
+          escapeCsv(String(inv.payment_status || 'completed').toUpperCase()),
+        ].join(','));
       });
+
+      // Add summary line at bottom
+      if (currentReportData.summary) {
+        rows.push('');
+        rows.push(`"SUMMARY: Total Bills",${currentReportData.summary.total_bills || currentReportData.invoices.length}`);
+        rows.push(`"Total Sales",${Number(currentReportData.summary.total_sales || 0).toFixed(2)}`);
+        rows.push(`"Total Discounts",${Number(currentReportData.summary.total_discounts || 0).toFixed(2)}`);
+        rows.push(`"Credit Udhaar",${Number(currentReportData.summary.credit_sales || 0).toFixed(2)}`);
+      }
     } else if (activeTab === 'monthly' && currentReportData.daily_breakdown) {
-      csvContent += 'Date,Bills Count,Gross Sales,Discounts,Tax Collected,Net Sales,Collected,Credit\n';
+      rows.push('Date,Bills Count,Gross Sales,Discounts,Tax Collected,Net Sales,Collected,Credit Udhaar');
       currentReportData.daily_breakdown.forEach((day: any) => {
-        csvContent += `"${day.date}","${day.bills_count}","${day.gross_sales}","${day.total_discounts}","${day.total_tax}","${day.total_sales}","${day.collected}","${day.credit}"\n`;
+        rows.push([
+          escapeCsv(day.date),
+          day.bills_count,
+          Number(day.gross_sales || 0).toFixed(2),
+          Number(day.total_discounts || 0).toFixed(2),
+          Number(day.total_tax || 0).toFixed(2),
+          Number(day.total_sales || 0).toFixed(2),
+          Number(day.collected || 0).toFixed(2),
+          Number(day.credit || 0).toFixed(2),
+        ].join(','));
       });
+      if (currentReportData.summary) {
+        rows.push('');
+        rows.push(`"MONTHLY TOTAL",${currentReportData.summary.total_bills || 0},${Number(currentReportData.summary.total_sales || 0).toFixed(2)}`);
+      }
     } else if (activeTab === 'item_wise' && currentReportData.items) {
-      csvContent += 'Item Name,Category,Unit,Times Billed,Quantity Sold,Gross Sales,Discounts,Net Revenue\n';
+      rows.push('Item Name,Category,Unit,Times Billed,Quantity Sold,Gross Sales,Discounts,Net Revenue');
       currentReportData.items.forEach((it: any) => {
-        csvContent += `"${it.item_name}","${it.category_name || 'General'}","${it.unit}","${it.times_billed}","${it.total_quantity}","${it.gross_amount}","${it.discount_amount}","${it.net_amount}"\n`;
+        rows.push([
+          escapeCsv(it.item_name),
+          escapeCsv(it.category_name || 'General'),
+          escapeCsv(it.unit || 'pcs'),
+          it.times_billed || 0,
+          it.total_quantity || 0,
+          Number(it.gross_amount || 0).toFixed(2),
+          Number(it.discount_amount || 0).toFixed(2),
+          Number(it.net_amount || 0).toFixed(2),
+        ].join(','));
       });
     } else if (activeTab === 'category_wise' && currentReportData.categories) {
-      csvContent += 'Category Name,Invoices Count,Total Items Sold,Total Revenue\n';
+      rows.push('Category Name,Invoices Count,Total Items Sold,Total Revenue');
       currentReportData.categories.forEach((cat: any) => {
-        csvContent += `"${cat.category_name}","${cat.invoice_count}","${cat.total_items_sold}","${cat.total_revenue}"\n`;
+        rows.push([
+          escapeCsv(cat.category_name),
+          cat.invoice_count,
+          cat.total_items_sold,
+          Number(cat.total_revenue || 0).toFixed(2),
+        ].join(','));
       });
     } else if (activeTab === 'discounts' && currentReportData.invoices) {
-      csvContent += 'Invoice #,Date,Customer,Subtotal,Item Discount,Bill Discount,Total Discount,Final Amount,Payment Mode\n';
+      rows.push('Bill No,Date,Customer Name,Subtotal,Item Discount,Bill Discount,Total Discount,Final Amount,Payment Mode');
       currentReportData.invoices.forEach((inv: any) => {
-        csvContent += `"${inv.invoice_number}","${inv.invoice_date}","${inv.customer_name || 'Cash Customer'}","${inv.subtotal}","${inv.item_discount_total || 0}","${inv.overall_discount_amount || 0}","${inv.total_discount}","${inv.final_amount}","${inv.payment_method}"\n`;
+        const d = inv.invoice_date?.split('T')[0] || inv.invoice_date || '';
+        rows.push([
+          escapeCsv(inv.invoice_number),
+          escapeCsv(d),
+          escapeCsv(inv.customer_name || 'Walk-in Customer'),
+          Number(inv.subtotal || 0).toFixed(2),
+          Number(inv.item_discount_total || 0).toFixed(2),
+          Number(inv.overall_discount_amount || 0).toFixed(2),
+          Number(inv.total_discount || 0).toFixed(2),
+          Number(inv.final_amount || 0).toFixed(2),
+          escapeCsv(String(inv.payment_method || '').toUpperCase()),
+        ].join(','));
       });
     } else if (activeTab === 'payments' && currentReportData.methods) {
-      csvContent += 'Payment Method,Transactions,Total Collected\n';
+      rows.push('Payment Method,Transactions,Total Collected');
       currentReportData.methods.forEach((m: any) => {
-        csvContent += `"${m.payment_method.toUpperCase()}","${m.total_transactions}","${m.total_collected}"\n`;
+        rows.push([
+          escapeCsv(String(m.payment_method || '').toUpperCase()),
+          m.total_transactions || 0,
+          Number(m.total_collected || 0).toFixed(2),
+        ].join(','));
       });
     } else if (activeTab === 'credit' && currentReportData.customers) {
-      csvContent += 'Customer Name,Phone,Address,Total Purchases,Pending Udhaar Balance,Credit Limit\n';
+      rows.push('Customer Name,Phone,Address,Total Purchases,Pending Udhaar Balance,Credit Limit');
       currentReportData.customers.forEach((c: any) => {
-        csvContent += `"${c.name}","${c.phone || ''}","${c.address || ''}","${c.total_purchases}","${c.current_balance}","${c.credit_limit || 0}"\n`;
+        rows.push([
+          escapeCsv(c.name),
+          escapeCsv(c.phone || ''),
+          escapeCsv(c.address || ''),
+          Number(c.total_purchases || 0).toFixed(2),
+          Number(c.current_balance || 0).toFixed(2),
+          c.credit_limit ? Number(c.credit_limit).toFixed(2) : '"No Limit"',
+        ].join(','));
       });
     } else if (activeTab === 'gst' && currentReportData.rate_breakdown) {
-      csvContent += 'GST Rate,Taxable Value,CGST Amount,SGST Amount,IGST Amount,Total Tax\n';
+      rows.push('GST Rate %,Taxable Value,CGST Amount,SGST Amount,IGST Amount,Total Tax');
       currentReportData.rate_breakdown.forEach((r: any) => {
-        csvContent += `"${r.gst_rate}%","${r.taxable_value}","${r.cgst_amount}","${r.sgst_amount}","${r.igst_amount}","${r.total_tax}"\n`;
+        rows.push([
+          `${r.gst_rate}%`,
+          Number(r.taxable_value || 0).toFixed(2),
+          Number(r.cgst_amount || 0).toFixed(2),
+          Number(r.sgst_amount || 0).toFixed(2),
+          Number(r.igst_amount || 0).toFixed(2),
+          Number(r.total_tax || 0).toFixed(2),
+        ].join(','));
       });
     } else {
-      csvContent += JSON.stringify(currentReportData);
+      rows.push(JSON.stringify(currentReportData));
     }
 
-    const encodedUri = encodeURI(csvContent);
+    // Standard UTF-8 BOM for Microsoft Excel compatibility
+    const csvContent = '\uFEFF' + rows.join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `ShopBill_${activeTab}_report_${Date.now()}.csv`);
+    link.href = url;
+    link.download = `ShopBill_${activeTab}_report_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   const reportTabs = [
