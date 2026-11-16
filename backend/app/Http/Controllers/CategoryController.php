@@ -146,6 +146,9 @@ class CategoryController extends Controller
         $count = \App\Services\ShopCatalogueTemplateService::seedCatalogueForShop($shop, $bType);
         $totalCats = Category::where('shop_id', $shop->id)->count();
 
+        Cache::forget("shop_{$shop->id}_categories");
+        Cache::forget("shop_{$shop->id}_products_all");
+
         return response()->json([
             'message' => "Successfully loaded trade catalogue! {$count} new items/categories updated.",
             'items_created' => $count,

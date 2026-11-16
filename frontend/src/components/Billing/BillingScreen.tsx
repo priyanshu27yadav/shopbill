@@ -758,10 +758,15 @@ export const BillingScreen: React.FC = () => {
       });
   }, [calculations.finalAmount, upiId, shopName, paymentMethod]);
 
-  // Generate Bill Function
+  // Generate Bill Function (Only runs after payment is completed and owner clicks Generate Receipt)
   const handleGenerateBill = async () => {
     if (cartItems.length === 0) {
       alert('Cannot generate an empty bill. Please add items first.');
+      return;
+    }
+
+    if (paymentStatus !== 'paid') {
+      confirmPaymentCompleted();
       return;
     }
 
@@ -850,54 +855,42 @@ export const BillingScreen: React.FC = () => {
     }
   };
 
-  // Automatically Complete Payment & Auto-Generate Bill
-  const completePaymentAndAutoGenerate = () => {
+  // Complete & Confirm payment received (Invoice will generate ONLY when owner clicks Generate Receipt)
+  const confirmPaymentCompleted = () => {
     if (cartItems.length === 0 || isSubmitting) return;
 
-    // 1. Play realistic UPI soundbox chime
-    playUpiPaymentChime();
+    if (paymentMethod === 'upi') {
+      playUpiPaymentChime();
+    }
 
-    // 2. Set paid status visually
     setPaymentStatus('paid');
     setShowQrModal(false);
-
-    // 3. Auto-generate bill after a brief 400ms visual confirmation
-    setTimeout(() => {
-      handleGenerateBill();
-    }, 400);
   };
 
-  // Auto-Detect Countdown Timer (Simulates POS / Soundbox webhook confirmation)
+  // Reset payment completed state if items or amount change
   useEffect(() => {
-    let timer: any;
-    if (autoDetectSeconds !== null && autoDetectSeconds > 0) {
-      timer = setTimeout(() => {
-        setAutoDetectSeconds(autoDetectSeconds - 1);
-      }, 1000);
-    } else if (autoDetectSeconds === 0) {
-      setAutoDetectSeconds(null);
-      completePaymentAndAutoGenerate();
+    if (paymentStatus === 'paid') {
+      setPaymentStatus('idle');
     }
-    return () => clearTimeout(timer);
-  }, [autoDetectSeconds]);
+  }, [cartItems.length, calculations.finalAmount]);
 
-  const startAutoDetect = (seconds = 4) => {
-    setAutoDetectSeconds(seconds);
-  };
-
-  // Keyboard shortcut: Ctrl+Enter to generate bill
+  // Keyboard shortcut: Ctrl+Enter to complete payment or generate receipt
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         if (cartItems.length > 0 && !isSubmitting) {
-          handleGenerateBill();
+          if (paymentStatus === 'paid') {
+            handleGenerateBill();
+          } else {
+            confirmPaymentCompleted();
+          }
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [cartItems, isSubmitting, calculations, paymentMethod, amountReceived]);
+  }, [cartItems, isSubmitting, calculations, paymentMethod, amountReceived, paymentStatus]);
 
   const currency = shop?.currency_symbol || '₹';
 
@@ -1573,59 +1566,141 @@ export const BillingScreen: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Auto-Generate Trigger Action Bar */}
-                    <div className="pt-1 border-t border-emerald-200/60 dark:border-emerald-800/60 flex items-center gap-1.5">
+                    {/* UPI Payment Confirmation Action Bar */}
+                    <div className="pt-1.5 border-t border-emerald-200/60 dark:border-emerald-800/60">
                       <button
                         type="button"
-                        onClick={completePaymentAndAutoGenerate}
-                        disabled={cartItems.length === 0 || isSubmitting || paymentStatus === 'paid'}
-                        className="flex-1 py-1.5 px-2 rounded-lg text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white shadow-xs flex items-center justify-center gap-1 transition-all"
-                        title="Simulates payment confirmation and automatically generates bill"
+                        onClick={confirmPaymentCompleted}
+                        disabled={cartItems.length === 0 || isSubmitting}
+                        className={`w-full py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                          paymentStatus === 'paid'
+                            ? 'bg-emerald-700 text-white ring-2 ring-emerald-400/50'
+                            : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white'
+                        }`}
+                        title="Click when customer scans and pays UPI"
                       >
-                        <Zap className="w-3.5 h-3.5 fill-current text-amber-300" />
+                        <CheckCircle2 className="w-4 h-4 text-emerald-200" />
                         <span>
                           {paymentStatus === 'paid'
-                            ? 'Paid! Generating...'
-                            : 'Payment Received (Auto-Bill)'}
+                            ? `✓ UPI Payment Received (${currency}${calculations.finalAmount})`
+                            : `Confirm UPI Payment Received (${currency}${calculations.finalAmount})`}
                         </span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => startAutoDetect(4)}
-                        disabled={autoDetectSeconds !== null || isSubmitting}
-                        className="py-1.5 px-2 rounded-lg text-[10px] font-bold border border-emerald-300 dark:border-emerald-700 bg-white dark:bg-slate-900 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 transition-colors shrink-0"
-                      >
-                        {autoDetectSeconds !== null ? `${autoDetectSeconds}s...` : 'Auto (4s)'}
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* Cash Received & Change */}
+                {/* Cash Received & Confirmation */}
                 {paymentMethod === 'cash' && (
-                  <div className="flex items-center gap-2 pt-1">
-                    <div className="flex-1">
-                      <label className="block text-[10px] font-semibold text-slate-500 uppercase">
-                        Cash Received
-                      </label>
-                      <input
-                        type="number"
-                        value={amountReceived}
-                        onChange={(e) => setAmountReceived(e.target.value)}
-                        className="w-full px-2 py-1 text-xs font-mono font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
-                      />
-                    </div>
-                    {calculations.changeDue > 0 && (
-                      <div className="text-right">
-                        <span className="block text-[10px] font-semibold text-slate-500 uppercase">
-                          Change Due
-                        </span>
-                        <span className="text-sm font-black text-emerald-600 font-mono">
-                          {currency}{calculations.changeDue}
-                        </span>
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <label className="block text-[10px] font-semibold text-slate-500 uppercase">
+                          Cash Received ({currency})
+                        </label>
+                        <input
+                          type="number"
+                          placeholder={calculations.finalAmount.toString()}
+                          value={amountReceived}
+                          onChange={(e) => {
+                            setAmountReceived(e.target.value);
+                            if (paymentStatus === 'paid') setPaymentStatus('idle');
+                          }}
+                          className="w-full px-2.5 py-1.5 text-xs font-mono font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800"
+                        />
                       </div>
-                    )}
+                      {calculations.changeDue > 0 && (
+                        <div className="text-right">
+                          <span className="block text-[10px] font-semibold text-slate-500 uppercase">
+                            Change to Return
+                          </span>
+                          <span className="text-sm font-black text-emerald-600 font-mono">
+                            {currency}{calculations.changeDue}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={confirmPaymentCompleted}
+                      disabled={cartItems.length === 0 || isSubmitting}
+                      className={`w-full py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                        paymentStatus === 'paid'
+                          ? 'bg-emerald-700 text-white ring-2 ring-emerald-400/50'
+                          : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                      <span>
+                        {paymentStatus === 'paid'
+                          ? `✓ Cash Received (${currency}${amountReceived || calculations.finalAmount})`
+                          : `Confirm Cash Payment Received (${currency}${amountReceived || calculations.finalAmount})`}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Card & Bank Transfer Confirmation */}
+                {(paymentMethod === 'card' || paymentMethod === 'bank_transfer') && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={confirmPaymentCompleted}
+                      disabled={cartItems.length === 0 || isSubmitting}
+                      className={`w-full py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                        paymentStatus === 'paid'
+                          ? 'bg-emerald-700 text-white ring-2 ring-emerald-400/50'
+                          : 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                      <span>
+                        {paymentStatus === 'paid'
+                          ? `✓ ${paymentMethod === 'card' ? 'Card' : 'Bank'} Payment Completed`
+                          : `Confirm ${paymentMethod === 'card' ? 'Card' : 'Bank'} Payment (${currency}${calculations.finalAmount})`}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Udhaar Confirmation */}
+                {paymentMethod === 'credit' && (
+                  <div className="pt-1">
+                    <button
+                      type="button"
+                      onClick={confirmPaymentCompleted}
+                      disabled={cartItems.length === 0 || isSubmitting}
+                      className={`w-full py-2 px-2.5 rounded-lg text-xs font-black flex items-center justify-center gap-1.5 transition-all shadow-xs ${
+                        paymentStatus === 'paid'
+                          ? 'bg-amber-700 text-white ring-2 ring-amber-400/50'
+                          : 'bg-amber-600 hover:bg-amber-700 active:scale-[0.98] text-white'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-amber-200" />
+                      <span>
+                        {paymentStatus === 'paid'
+                          ? `✓ Udhaar Sale Approved for ${customerName || 'Customer'}`
+                          : `Confirm Udhaar Sale (${currency}${calculations.finalAmount})`}
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {/* Payment Completed Status Banner */}
+                {paymentStatus === 'paid' && (
+                  <div className="p-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-700 rounded-xl flex items-center justify-between text-xs animate-in fade-in">
+                    <div className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-200 font-bold">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>Payment completed! Click "Generate Receipt" below.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentStatus('idle')}
+                      className="text-[10px] text-slate-500 hover:text-slate-800 dark:hover:text-white underline font-semibold shrink-0 ml-1"
+                    >
+                      Change
+                    </button>
                   </div>
                 )}
               </div>
@@ -1724,15 +1799,27 @@ export const BillingScreen: React.FC = () => {
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  disabled={cartItems.length === 0 || isSubmitting}
-                  onClick={handleGenerateBill}
-                  className="w-full py-2.5 rounded-lg text-xs font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 transition-all active:scale-[0.99] disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2"
-                >
-                  <Printer className="w-4 h-4" />
-                  <span>{isSubmitting ? 'Generating...' : 'Generate Bill (Ctrl+Enter)'}</span>
-                </button>
+                {paymentStatus === 'paid' ? (
+                  <button
+                    type="button"
+                    disabled={cartItems.length === 0 || isSubmitting}
+                    onClick={handleGenerateBill}
+                    className="w-full py-3 rounded-xl text-sm font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-600/30 transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2 ring-2 ring-emerald-400"
+                  >
+                    <Receipt className="w-5 h-5 text-emerald-100" />
+                    <span>{isSubmitting ? 'Generating Receipt...' : 'Generate Receipt & Print (Ctrl+Enter)'}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={cartItems.length === 0 || isSubmitting}
+                    onClick={confirmPaymentCompleted}
+                    className="w-full py-2.5 rounded-xl text-xs font-extrabold bg-slate-800 hover:bg-slate-700 text-white shadow-sm transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                    <span>Complete Payment Above to Generate Receipt</span>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -1810,35 +1897,25 @@ export const BillingScreen: React.FC = () => {
               Scan with GPay, PhonePe, Paytm or any UPI app
             </p>
 
-            {/* Auto-Generate on Payment Completed */}
+            {/* Confirm Payment Completed in QR Modal */}
             <div className="space-y-2">
               <button
                 type="button"
-                onClick={completePaymentAndAutoGenerate}
+                onClick={confirmPaymentCompleted}
                 disabled={cartItems.length === 0 || isSubmitting}
-                className="w-full py-2.5 text-xs font-black rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+                className="w-full py-3 text-xs sm:text-sm font-black rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
               >
-                <Zap className="w-4 h-4 fill-current text-amber-300" />
-                <span>Payment Complete (Auto-Generate Bill)</span>
+                <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                <span>Confirm Payment Received (भुगतान प्राप्त हुआ)</span>
               </button>
 
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => startAutoDetect(4)}
-                  disabled={autoDetectSeconds !== null || isSubmitting}
-                  className="flex-1 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                >
-                  {autoDetectSeconds !== null ? `Auto in ${autoDetectSeconds}s...` : '⚡ Auto-Detect (4s)'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowQrModal(false)}
-                  className="py-1.5 px-4 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
-                >
-                  Close
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(false)}
+                className="w-full py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                Close QR View
+              </button>
             </div>
           </div>
         </div>
@@ -2039,6 +2116,32 @@ export const BillingScreen: React.FC = () => {
           isOpen={showSalesReturnModal}
           onClose={() => setShowSalesReturnModal(false)}
         />
+      )}
+
+      {/* Mobile Floating Sticky Cart Summary Bar (Shown when on items/catalogue tab on phones) */}
+      {mobileTab === 'items' && cartItems.length > 0 && (
+        <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 p-2.5 bg-slate-900/95 backdrop-blur-md border-t border-slate-800 shadow-2xl flex items-center justify-between text-white animate-in slide-in-from-bottom-2">
+          <div className="flex items-center gap-2 pl-1">
+            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold font-mono text-xs">
+              {cartItems.length}
+            </div>
+            <div>
+              <p className="text-[10px] text-slate-400 leading-tight">Total Bill</p>
+              <p className="text-sm font-black font-mono text-emerald-400">
+                {currency}{calculations.finalAmount}
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setMobileTab('cart')}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black bg-emerald-500 hover:bg-emerald-600 text-slate-950 shadow-md transition-all active:scale-95"
+          >
+            <span>Proceed to Bill & Pay</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
       )}
     </div>
   );

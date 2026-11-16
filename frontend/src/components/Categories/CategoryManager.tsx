@@ -53,8 +53,15 @@ const GST_RATES = [0, 5, 12, 18, 28];
 
 export const CategoryManager: React.FC = () => {
   const { shop } = useAuth();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>(() => {
+    try {
+      const cached = localStorage.getItem('shopbill_cached_categories');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(() => !localStorage.getItem('shopbill_cached_categories'));
 
   // Category Edit/Add Modal
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -62,9 +69,10 @@ export const CategoryManager: React.FC = () => {
   const [catName, setCatName] = useState('');
   const [catDescription, setCatDescription] = useState('');
 
-  // Selected Category Drill-down
+  // Selected Category Drill-down & In-Memory Fast Cache
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [categoryProducts, setCategoryProducts] = useState<Product[]>([]);
+  const [productsByCatCache, setProductsByCatCache] = useState<Record<number, Product[]>>({});
   const [productsLoading, setProductsLoading] = useState(false);
   const [productSearch, setProductSearch] = useState('');
 
@@ -94,10 +102,15 @@ export const CategoryManager: React.FC = () => {
   }, []);
 
   const loadCategories = async () => {
-    setLoading(true);
+    if (categories.length === 0) setLoading(true);
     try {
       const res = await categoryApi.list();
       setCategories(res.data);
+      try {
+        localStorage.setItem('shopbill_cached_categories', JSON.stringify(res.data));
+      } catch (e) {
+        // quota exceeded or private browsing
+      }
     } catch (e) {
       console.error(e);
     } finally {
@@ -105,7 +118,7 @@ export const CategoryManager: React.FC = () => {
     }
   };
 
-  // Load items for the selected category
+  // Load items for the selected category with instant in-memory cache
   const handleSelectCategory = async (cat: Category) => {
     if (selectedCategory?.id === cat.id) {
       // Toggle off if already selected
@@ -115,18 +128,38 @@ export const CategoryManager: React.FC = () => {
     }
 
     setSelectedCategory(cat);
-    setProductsLoading(true);
     setProductSearch('');
+
+    // Instant local memory cache hit
+    if (productsByCatCache[cat.id]) {
+      setCategoryProducts(productsByCatCache[cat.id]);
+      setProductsLoading(false);
+      setTimeout(() => {
+        document.getElementById('category-items-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+
+      // Background revalidation
+      productApi.list({ category_id: cat.id, all: true }).then((res) => {
+        const items = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+        setCategoryProducts(items);
+        setProductsByCatCache((prev) => ({ ...prev, [cat.id]: items }));
+      }).catch(console.error);
+      return;
+    }
+
+    setProductsLoading(true);
     try {
       const res = await productApi.list({ category_id: cat.id, all: true });
-      setCategoryProducts(Array.isArray(res.data) ? res.data : (res.data?.data || []));
+      const items = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      setCategoryProducts(items);
+      setProductsByCatCache((prev) => ({ ...prev, [cat.id]: items }));
       // Smooth scroll to items section
       setTimeout(() => {
         const el = document.getElementById('category-items-section');
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-      }, 100);
+      }, 50);
     } catch (err) {
       console.error('Error fetching products for category:', err);
     } finally {

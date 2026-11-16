@@ -41,7 +41,7 @@ class ProductController extends Controller
             $query->where('is_active', true);
         }
 
-        // Return all if requested (for billing catalog cache)
+        // Return all if requested (for billing catalog cache or category drilldown)
         if ($request->boolean('all', false)) {
             if (!$request->filled('search') && !$request->filled('category_id')) {
                 $products = Cache::remember("shop_{$shop->id}_products_all", 300, function () use ($shop) {
@@ -50,6 +50,13 @@ class ProductController extends Controller
                         ->where('is_active', true)
                         ->orderBy('name', 'asc')
                         ->get();
+                });
+                return response()->json($products);
+            }
+            if (!$request->filled('search') && $request->filled('category_id')) {
+                $catId = $request->integer('category_id');
+                $products = Cache::remember("shop_{$shop->id}_cat_{$catId}_products", 300, function () use ($query) {
+                    return $query->orderBy('name', 'asc')->get();
                 });
                 return response()->json($products);
             }
@@ -121,6 +128,7 @@ class ProductController extends Controller
         Cache::forget("shop_{$shop->id}_products_all");
         Cache::forget("shop_{$shop->id}_categories");
         Cache::forget("shop_{$shop->id}_products_metadata");
+        Cache::forget("shop_{$shop->id}_cat_{$product->category_id}_products");
 
         return response()->json([
             'message' => 'Product created successfully.',
@@ -177,6 +185,7 @@ class ProductController extends Controller
         Cache::forget("shop_{$shop->id}_products_all");
         Cache::forget("shop_{$shop->id}_categories");
         Cache::forget("shop_{$shop->id}_products_metadata");
+        Cache::forget("shop_{$shop->id}_cat_{$product->category_id}_products");
 
         return response()->json([
             'message' => count($created) . ' products added successfully.',
@@ -216,6 +225,7 @@ class ProductController extends Controller
         Cache::forget("shop_{$shop->id}_products_all");
         Cache::forget("shop_{$shop->id}_categories");
         Cache::forget("shop_{$shop->id}_products_metadata");
+        Cache::forget("shop_{$shop->id}_cat_{$product->category_id}_products");
 
         return response()->json([
             'message' => 'Product updated successfully.',
@@ -235,6 +245,7 @@ class ProductController extends Controller
         Cache::forget("shop_{$shop->id}_products_all");
         Cache::forget("shop_{$shop->id}_categories");
         Cache::forget("shop_{$shop->id}_products_metadata");
+        Cache::forget("shop_{$shop->id}_cat_{$product->category_id}_products");
 
         return response()->json(['message' => 'Product deleted successfully.']);
     }
