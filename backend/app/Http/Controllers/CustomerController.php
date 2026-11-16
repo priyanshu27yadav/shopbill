@@ -142,7 +142,7 @@ class CustomerController extends Controller
         $totalPaid = max(0, $totalShopping - $currentBalance);
 
         $recentBills = $customer->invoices()
-            ->with(['items:id,invoice_id,product_name,quantity,unit_price,total_amount'])
+            ->with(['items:id,invoice_id,item_name,quantity,unit_price,total_amount'])
             ->select(['id', 'shop_id', 'customer_id', 'invoice_number', 'invoice_date', 'final_amount', 'amount_paid', 'balance_due', 'payment_status', 'payment_method'])
             ->orderBy('invoice_date', 'desc')
             ->take(6)
