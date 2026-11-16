@@ -7,12 +7,18 @@ import {
   RefreshCw,
   Clock,
   Languages,
+  Menu,
 } from 'lucide-react';
 import { useOffline } from '../../context/OfflineContext';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  sidebarOpen?: boolean;
+  onToggleSidebar?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ sidebarOpen, onToggleSidebar }) => {
   const { isOnline, isSyncing, pendingBillsCount, syncNow } = useOffline();
   const { shop } = useAuth();
   const { language, setLanguage, t } = useLanguage();
@@ -58,7 +64,20 @@ export const Header: React.FC = () => {
 
   return (
     <header className="h-14 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 flex items-center justify-between select-none">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        {/* 3-Line Hamburger Menu Toggle Button */}
+        {onToggleSidebar && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            title={sidebarOpen ? 'Hide Sidebar (साइडबार छुपाएं)' : 'Show Sidebar (साइडबार खोलें)'}
+            aria-label="Toggle navigation sidebar"
+            className="p-2 -ml-1 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 transition-all cursor-pointer flex items-center justify-center shrink-0 shadow-2xs active:scale-95"
+          >
+            <Menu className="w-5 h-5 text-slate-700 dark:text-slate-200" />
+          </button>
+        )}
+
         <div>
           <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
             <span>{shop?.name || 'ShopBill Central'}</span>

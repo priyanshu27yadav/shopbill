@@ -18,12 +18,17 @@ import {
   ChevronDown,
   CheckCircle2,
   RotateCcw,
+  PanelLeftClose,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  onClose?: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
   const { user, shop, accessibleShops, permissions, switchShop, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { language, t } = useLanguage();
@@ -114,19 +119,32 @@ export const Sidebar: React.FC = () => {
       <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col h-screen select-none transition-colors duration-200">
         {/* Brand & Shop Switcher */}
         <div className="p-4 border-b border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 font-bold text-lg">
-              SB
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 font-bold text-lg">
+                SB
+              </div>
+              <div>
+                <h1 className="text-base font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-1.5">
+                  <span>SHOPBILL</span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 font-bold px-1.5 py-0.5 rounded">
+                    v1.0
+                  </span>
+                </h1>
+                <p className="text-xs text-slate-400">{t('user.retail_billing')}</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-base font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-1.5">
-                <span>SHOPBILL</span>
-                <span className="text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400 font-bold px-1.5 py-0.5 rounded">
-                  v1.0
-                </span>
-              </h1>
-              <p className="text-xs text-slate-400">{t('user.retail_billing')}</p>
-            </div>
+
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                title="Hide Sidebar (साइडबार छुपाएं)"
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <PanelLeftClose className="w-4 h-4" />
+              </button>
+            )}
           </div>
 
           {/* Shop Switcher Card */}
