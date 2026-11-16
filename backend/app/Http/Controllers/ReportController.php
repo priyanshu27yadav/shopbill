@@ -146,18 +146,21 @@ class ReportController extends Controller
                     ->whereBetween('invoice_date', [$startDate, $endDate]);
             })
             ->select(
-                DB::raw('COALESCE(category_name, "General") as category_name'),
+                DB::raw("COALESCE(category_name, 'General') as category_name"),
                 DB::raw('SUM(quantity) as total_items_sold'),
                 DB::raw('SUM(total_amount) as total_revenue'),
                 DB::raw('COUNT(DISTINCT invoice_id) as invoice_count')
             )
-            ->groupBy('category_name')
-            ->orderBy('total_revenue', 'desc')
+            ->groupBy(DB::raw("COALESCE(category_name, 'General')"))
+            ->orderByDesc(DB::raw('SUM(total_amount)'))
             ->get();
 
         return response()->json([
             'start_date' => $startDate->toDateString(),
             'end_date' => $endDate->toDateString(),
+            'total_categories' => $categories->count(),
+            'total_revenue' => $categories->sum('total_revenue'),
+            'total_items_sold' => $categories->sum('total_items_sold'),
             'categories' => $categories,
         ]);
     }
@@ -175,11 +178,13 @@ class ReportController extends Controller
             ->where('status', 'completed')
             ->where('total_discount', '>', 0)
             ->whereBetween('invoice_date', [$startDate, $endDate])
-            ->with(['customer:id,name'])
+            ->with(['customer:id,name,phone'])
             ->orderBy('invoice_date', 'desc')
-            ->get(['id', 'invoice_number', 'invoice_date', 'customer_name', 'subtotal', 'item_discount_total', 'overall_discount_amount', 'total_discount', 'final_amount']);
+            ->get(['id', 'customer_id', 'invoice_number', 'invoice_date', 'customer_name', 'subtotal', 'item_discount_total', 'overall_discount_amount', 'total_discount', 'final_amount', 'payment_method']);
 
         return response()->json([
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString(),
             'total_discount_given' => $invoicesWithDiscounts->sum('total_discount'),
             'bills_with_discounts' => $invoicesWithDiscounts->count(),
             'invoices' => $invoicesWithDiscounts,
@@ -206,6 +211,7 @@ class ReportController extends Controller
             'end_date' => $endDate->toDateString(),
             'methods' => $methods,
             'total_collected' => $methods->sum('total_collected'),
+            'total_transactions' => $methods->sum('total_transactions'),
         ]);
     }
 
@@ -224,6 +230,7 @@ class ReportController extends Controller
         return response()->json([
             'total_outstanding' => $debtors->sum('current_balance'),
             'total_credit_customers' => $debtors->count(),
+            'total_credit_limit' => $debtors->sum('credit_limit'),
             'customers' => $debtors,
         ]);
     }
