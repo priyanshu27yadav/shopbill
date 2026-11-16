@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { OfflineProvider } from './context/OfflineContext';
+import { LanguageProvider } from './context/LanguageContext';
 
 import { AppLayout } from './components/Layout/AppLayout';
 import { LoginScreen } from './components/Auth/LoginScreen';
@@ -40,9 +41,10 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 export const App: React.FC = () => {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <OfflineProvider>
-          <BrowserRouter>
+      <LanguageProvider>
+        <AuthProvider>
+          <OfflineProvider>
+            <BrowserRouter>
             <Routes>
               {/* Public Auth Routes */}
               <Route path="/login" element={<LoginScreen />} />
@@ -76,7 +78,8 @@ export const App: React.FC = () => {
           </BrowserRouter>
         </OfflineProvider>
       </AuthProvider>
-    </ThemeProvider>
+    </LanguageProvider>
+  </ThemeProvider>
   );
 };
 
