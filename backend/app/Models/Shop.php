@@ -108,4 +108,14 @@ class Shop extends Model
     {
         return $this->hasMany(Subscription::class);
     }
+
+    public function paymentAccounts()
+    {
+        return $this->hasMany(ShopPaymentAccount::class);
+    }
+
+    public function activePaymentAccount()
+    {
+        return $this->hasOne(ShopPaymentAccount::class)->where('status', 'active')->where('is_primary', true);
+    }
 }

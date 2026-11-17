@@ -19,8 +19,15 @@ import { PrintCreditNoteModal } from './PrintCreditNoteModal';
 
 export const SalesReturnHistory: React.FC = () => {
   const { shop } = useAuth();
-  const [returns, setReturns] = useState<SalesReturn[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [returns, setReturns] = useState<SalesReturn[]>(() => {
+    try {
+      const cached = localStorage.getItem('shopbill_cached_returns');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [loading, setLoading] = useState(() => !localStorage.getItem('shopbill_cached_returns'));
   const [searchTerm, setSearchTerm] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -33,15 +40,19 @@ export const SalesReturnHistory: React.FC = () => {
     loadReturns();
   }, [shop, startDate, endDate]);
 
-  const loadReturns = async () => {
-    setLoading(true);
+  const loadReturns = async (showSpinner = false) => {
+    if (showSpinner || returns.length === 0) setLoading(true);
     try {
       const res = await salesReturnApi.list({
         search: searchTerm,
         start_date: startDate || undefined,
         end_date: endDate || undefined,
       });
-      setReturns(res.data.data || []);
+      const data = res.data.data || [];
+      setReturns(data);
+      try {
+        localStorage.setItem('shopbill_cached_returns', JSON.stringify(data));
+      } catch {}
     } catch (err) {
       console.error('Failed to load sales returns:', err);
     } finally {
@@ -51,7 +62,7 @@ export const SalesReturnHistory: React.FC = () => {
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    loadReturns();
+    loadReturns(true);
   };
 
   const currency = shop?.currency_symbol || '₹';

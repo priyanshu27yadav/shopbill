@@ -18,6 +18,7 @@ import { CustomerList } from './components/Customers/CustomerList';
 import { SalesReturnHistory } from './components/Returns/SalesReturnHistory';
 import { ReportsScreen } from './components/Reports/ReportsScreen';
 import { SettingsScreen } from './components/Settings/SettingsScreen';
+import { PaymentSettingsScreen } from './components/PaymentSettings/PaymentSettingsScreen';
 import { SuperAdminScreen } from './components/SuperAdmin/SuperAdminScreen';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -68,6 +69,8 @@ export const App: React.FC = () => {
                 <Route path="/customers" element={<CustomerList />} />
                 <Route path="/reports" element={<ReportsScreen />} />
                 <Route path="/settings" element={<SettingsScreen />} />
+                <Route path="/payment-settings" element={<PaymentSettingsScreen />} />
+                <Route path="/settings/payments" element={<Navigate to="/payment-settings" replace />} />
                 <Route path="/admin" element={<SuperAdminScreen />} />
 
                 {/* Default route */}

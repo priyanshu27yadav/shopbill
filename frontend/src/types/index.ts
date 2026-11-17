@@ -263,3 +263,71 @@ export interface DashboardData {
   recent_bills: Invoice[];
   sales_trend: { date: string; day: string; sales: number }[];
 }
+
+export interface ShopPaymentAccount {
+  id: number;
+  shop_id: number;
+  provider: 'cashfree' | 'razorpay';
+  connection_type: 'existing' | 'new_onboarding';
+  environment: 'sandbox' | 'production';
+  status: 'active' | 'pending_verification' | 'under_review' | 'action_required' | 'disconnected';
+  is_primary: boolean;
+  merchant_id?: string;
+  account_id?: string;
+  app_id?: string;
+  has_secret?: boolean;
+  masked_app_id?: string;
+  business_name?: string;
+  business_type?: string;
+  business_category?: string;
+  shop_address?: string;
+  state?: string;
+  district?: string;
+  city?: string;
+  pincode?: string;
+  owner_name?: string;
+  owner_mobile?: string;
+  owner_email?: string;
+  owner_pan_masked?: string;
+  bank_account_holder?: string;
+  bank_account_number_masked?: string;
+  bank_ifsc?: string;
+  bank_name?: string;
+  application_reference?: string;
+  kyc_status: 'not_started' | 'in_progress' | 'verified' | 'needs_clarification';
+  onboarding_url?: string;
+  verified_at?: string;
+  meta?: any;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PaymentSettingsResponse {
+  shop_id: number;
+  shop_name: string;
+  accounts: ShopPaymentAccount[];
+  active_account: ShopPaymentAccount | null;
+  prefill: {
+    shop_name: string;
+    business_type: string;
+    business_category: string;
+    shop_address: string;
+    state: string;
+    district: string;
+    city: string;
+    pincode: string;
+    owner_name: string;
+    owner_mobile: string;
+    owner_email: string;
+    gstin?: string;
+  };
+  providers: {
+    [key: string]: {
+      name: string;
+      tagline: string;
+      logo: string;
+      supported_methods: string[];
+      settlement_cycle: string;
+    };
+  };
+}

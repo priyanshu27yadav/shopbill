@@ -27,4 +27,20 @@ class PersonalAccessToken extends SanctumPersonalAccessToken
             return $instance;
         });
     }
+
+    /**
+     * Skip remote network DB write if only last_used_at changed within the last hour.
+     */
+    public function save(array $options = [])
+    {
+        $dirty = $this->getDirty();
+        if (count($dirty) === 1 && isset($dirty['last_used_at'])) {
+            $original = $this->getOriginal('last_used_at');
+            if ($original && now()->diffInMinutes($original) < 60) {
+                return true;
+            }
+        }
+
+        return parent::save($options);
+    }
 }

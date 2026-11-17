@@ -9,6 +9,8 @@ import {
   DashboardData,
   ExtractedPdfItem,
   InvoiceSetting,
+  ShopPaymentAccount,
+  PaymentSettingsResponse,
 } from '../types';
 
 export const authApi = {
@@ -139,4 +141,29 @@ export const adminApi = {
   dashboard: () => apiClient.get<any>('/admin/dashboard'),
   shops: (params?: any) => apiClient.get<any>('/admin/shops', { params }),
   toggleShopStatus: (id: number) => apiClient.post<any>(`/admin/shops/${id}/toggle-status`),
+};
+
+export const paymentSettingsApi = {
+  get: () => apiClient.get<PaymentSettingsResponse>('/payment-settings'),
+  connectExisting: (data: {
+    provider: 'cashfree' | 'razorpay';
+    environment: 'sandbox' | 'production';
+    key_id?: string;
+    key_secret?: string;
+    account_id?: string;
+    app_id?: string;
+    secret_key?: string;
+    merchant_id?: string;
+  }) => apiClient.post<{ message: string; account: ShopPaymentAccount }>('/payment-settings/connect-existing', data),
+  onboardNew: (data: any) =>
+    apiClient.post<{
+      message: string;
+      account: ShopPaymentAccount;
+      application_reference: string;
+      onboarding_url: string;
+    }>('/payment-settings/onboard-new', data),
+  verifyKyc: (id: number) => apiClient.post<{ message: string; account: ShopPaymentAccount }>(`/payment-settings/${id}/verify-kyc`),
+  setPrimary: (id: number) => apiClient.post<{ message: string; account: ShopPaymentAccount }>(`/payment-settings/${id}/set-primary`),
+  disconnect: (id: number) => apiClient.post<{ message: string; account: ShopPaymentAccount }>(`/payment-settings/${id}/disconnect`),
+  testOrder: () => apiClient.post<{ success: boolean; message: string; order: any }>('/payment-settings/test-order'),
 };

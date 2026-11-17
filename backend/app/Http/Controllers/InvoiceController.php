@@ -27,12 +27,7 @@ class InvoiceController extends Controller
         $shop = $request->get('current_shop');
 
         $query = Invoice::where('shop_id', $shop->id)
-            ->withCount('items')
-            ->with([
-                'customer:id,name,phone,address,gstin',
-                'user:id,name',
-                'payments:id,shop_id,invoice_id,customer_id,payment_number,payment_date,amount,payment_method,payment_type,notes',
-            ]);
+            ->withCount('items');
 
         // Filter by date range
         if ($request->filled('start_date')) {
@@ -71,7 +66,7 @@ class InvoiceController extends Controller
 
         if (!$request->filled('start_date') && !$request->filled('end_date') && !$request->filled('status') && !$request->filled('payment_status') && !$request->filled('billing_mode') && !$request->filled('search') && $request->integer('page', 1) === 1) {
             $cacheKey = "shop_{$shop->id}_invoices_p1_per_{$perPage}";
-            $invoices = Cache::remember($cacheKey, 30, function () use ($query, $perPage) {
+            $invoices = Cache::remember($cacheKey, 120, function () use ($query, $perPage) {
                 return $query->orderBy('invoice_date', 'desc')
                     ->orderBy('id', 'desc')
                     ->paginate($perPage);

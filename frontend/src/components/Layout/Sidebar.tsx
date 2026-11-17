@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   RotateCcw,
   PanelLeftClose,
+  CreditCard,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -100,6 +101,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
       name: t('nav.settings'),
       path: '/settings',
       icon: Settings,
+      requirePerm: 'can_manage_items',
+    },
+    {
+      name: 'Payment Settings',
+      path: '/payment-settings',
+      icon: CreditCard,
+      badge: 'Gateway',
       requirePerm: 'can_manage_items',
     },
   ];

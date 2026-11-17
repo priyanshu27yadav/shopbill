@@ -45,7 +45,17 @@ export const InvoiceHistory: React.FC = () => {
 
   useEffect(() => {
     loadInvoices();
-    settingsApi.get().then((res) => setInvoiceSettings(res.data.invoice_settings)).catch(console.error);
+
+    // Read cached settings if available to avoid blocking network roundtrips
+    try {
+      const cachedCat = localStorage.getItem('shopbill_cached_catalogue');
+      if (cachedCat) {
+        const parsed = JSON.parse(cachedCat);
+        if (parsed.invoice_setting) {
+          setInvoiceSettings(parsed.invoice_setting);
+        }
+      }
+    } catch {}
 
     const handleSynced = () => {
       loadInvoices();

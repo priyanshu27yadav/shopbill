@@ -23,8 +23,7 @@ class SalesReturnController extends Controller
     {
         $shop = $request->get('current_shop');
 
-        $query = SalesReturn::where('shop_id', $shop->id)
-            ->with(['customer:id,name,phone', 'user:id,name', 'items']);
+        $query = SalesReturn::where('shop_id', $shop->id);
 
         if ($request->filled('search')) {
             $s = $request->search;

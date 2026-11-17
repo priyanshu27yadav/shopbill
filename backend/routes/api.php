@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\OfflineSyncController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\PaymentSettingsController;
 use App\Http\Controllers\PriceListController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ReportController;
@@ -109,6 +110,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::put('/settings/invoice', [SettingsController::class, 'updateInvoiceSettings']);
         Route::post('/settings/upload-qr', [SettingsController::class, 'uploadQrImage']);
         Route::put('/settings/shop', [SettingsController::class, 'updateShopSettings']);
+
+        // Payment Settings & Merchant Account Integration (Cashfree & Razorpay)
+        Route::get('/payment-settings', [PaymentSettingsController::class, 'index']);
+        Route::post('/payment-settings/connect-existing', [PaymentSettingsController::class, 'connectExisting']);
+        Route::post('/payment-settings/onboard-new', [PaymentSettingsController::class, 'onboardNew']);
+        Route::post('/payment-settings/{id}/verify-kyc', [PaymentSettingsController::class, 'checkKycStatus']);
+        Route::post('/payment-settings/{id}/set-primary', [PaymentSettingsController::class, 'setPrimary']);
+        Route::post('/payment-settings/{id}/disconnect', [PaymentSettingsController::class, 'disconnect']);
+        Route::post('/payment-settings/test-order', [PaymentSettingsController::class, 'createTestOrder']);
 
         // Offline Desktop Sync
         Route::get('/sync/pull-catalogue', [OfflineSyncController::class, 'pullCatalogue']);

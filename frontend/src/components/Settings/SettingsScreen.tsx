@@ -14,6 +14,7 @@ import {
   Sparkles,
   Lock,
   Image as ImageIcon,
+  CreditCard,
 } from 'lucide-react';
 import { settingsApi, shopApi } from '../../api';
 import { Shop, InvoiceSetting } from '../../types';
@@ -312,6 +313,14 @@ export const SettingsScreen: React.FC = () => {
           <QrCode className="w-4 h-4" />
           <span>Payment & UPI QR Upload</span>
         </button>
+
+        <a
+          href="/payment-settings"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100"
+        >
+          <CreditCard className="w-4 h-4 text-emerald-600" />
+          <span>Payment Gateway (Cashfree / Razorpay) →</span>
+        </a>
 
         <button
           onClick={() => setActiveTab('invoice')}

@@ -17,7 +17,7 @@ const inFlightRequests = new Map<string, Promise<AxiosResponse>>();
 const DEFAULT_CACHE_TTL = 60 * 1000;
 
 // Endpoints that shouldn't be cached (real-time lookups)
-const NO_CACHE_ENDPOINTS = ['/customers/lookup', '/sales-returns/search-invoice', '/health'];
+const NO_CACHE_ENDPOINTS = ['/customers/lookup', '/sales-returns/search-invoice', '/health', '/payment-settings'];
 
 export const clearApiCache = (pattern?: string) => {
   if (!pattern) {

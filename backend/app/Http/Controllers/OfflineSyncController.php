@@ -216,6 +216,9 @@ class OfflineSyncController extends Controller
             }
         });
 
+        \Illuminate\Support\Facades\Cache::forget("shop_{$shop->id}_invoices_p1_per_50");
+        \Illuminate\Support\Facades\Cache::forget("shop_{$shop->id}_dashboard_cache");
+
         return response()->json([
             'message' => 'Offline sync completed.',
             'synced_count' => count($synced),
