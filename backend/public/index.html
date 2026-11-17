@@ -3,12 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#059669" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
-    <script type="module" crossorigin src="/assets/index-BE-uIZ7u.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-WSCqXYDX.css">
+    <title>ShopBill - Retail Billing & POS Software</title>
+    <script type="module" crossorigin src="/assets/index-Copytmub.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-NRB3BpwA.css">
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch((err) => {
+            console.warn('Service worker registration failed:', err);
+          });
+        });
+      }
+    </script>
   </body>
 </html>

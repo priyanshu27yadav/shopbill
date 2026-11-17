@@ -157,24 +157,32 @@ class OfflineSyncController extends Controller
                 ]);
 
                 foreach ($invData['items'] as $item) {
+                    $qty = floatval($item['quantity'] ?? 1);
+                    $unitPrice = floatval($item['unit_price'] ?? 0);
+                    $itemSubtotal = floatval($item['subtotal'] ?? ($qty * $unitPrice));
+                    $itemDiscount = floatval($item['discount_amount'] ?? 0);
+                    $taxRate = floatval($item['gst_rate'] ?? 0);
+                    $taxAmt = floatval($item['tax_amount'] ?? (($itemSubtotal - $itemDiscount) * ($taxRate / 100)));
+                    $itemTotal = floatval($item['total_amount'] ?? ($itemSubtotal - $itemDiscount + $taxAmt));
+
                     InvoiceItem::create([
                         'invoice_id' => $invoice->id,
                         'product_id' => $item['product_id'] ?? null,
-                        'item_name' => $item['item_name'],
+                        'item_name' => $item['item_name'] ?? 'Item',
                         'category_name' => $item['category_name'] ?? null,
                         'is_custom_item' => !empty($item['is_custom_item']),
                         'hsn_code' => $item['hsn_code'] ?? null,
                         'unit' => $item['unit'] ?? 'pcs',
-                        'quantity' => $item['quantity'],
-                        'unit_price' => $item['unit_price'],
-                        'discount_amount' => $item['discount_amount'] ?? 0,
-                        'subtotal' => $item['subtotal'],
-                        'gst_rate' => $item['gst_rate'] ?? 0,
-                        'cgst_amount' => $item['cgst_amount'] ?? 0,
-                        'sgst_amount' => $item['sgst_amount'] ?? 0,
+                        'quantity' => $qty,
+                        'unit_price' => $unitPrice,
+                        'discount_amount' => $itemDiscount,
+                        'subtotal' => $itemSubtotal,
+                        'gst_rate' => $taxRate,
+                        'cgst_amount' => $item['cgst_amount'] ?? ($taxRate > 0 ? $taxAmt / 2 : 0),
+                        'sgst_amount' => $item['sgst_amount'] ?? ($taxRate > 0 ? $taxAmt / 2 : 0),
                         'igst_amount' => $item['igst_amount'] ?? 0,
-                        'tax_amount' => $item['tax_amount'] ?? 0,
-                        'total_amount' => $item['total_amount'] ?? $item['subtotal'],
+                        'tax_amount' => $taxAmt,
+                        'total_amount' => $itemTotal,
                     ]);
                 }
 

@@ -28,6 +28,7 @@ interface PendingOfflineBill {
 
 interface OfflineContextType {
   isOnline: boolean;
+  isManualOffline: boolean;
   isSyncing: boolean;
   pendingBillsCount: number;
   pendingBills: PendingOfflineBill[];
@@ -43,12 +44,16 @@ interface OfflineContextType {
   saveOfflineInvoice: (data: any) => Promise<any>;
   syncNow: () => Promise<{ success: boolean; syncedCount: number; message: string }>;
   refreshLocalCatalogue: () => Promise<void>;
+  toggleOfflineMode: () => void;
 }
 
 const OfflineContext = createContext<OfflineContextType | undefined>(undefined);
 
 export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [networkOnline, setNetworkOnline] = useState<boolean>(navigator.onLine);
+  const [isManualOffline, setIsManualOffline] = useState<boolean>(() => {
+    return localStorage.getItem('shopbill_manual_offline') === 'true';
+  });
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [pendingBills, setPendingBills] = useState<PendingOfflineBill[]>(() => {
     try {
@@ -58,6 +63,20 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return [];
     }
   });
+
+  const isOnline = networkOnline && !isManualOffline;
+
+  const toggleOfflineMode = () => {
+    setIsManualOffline((prev) => {
+      const next = !prev;
+      localStorage.setItem('shopbill_manual_offline', String(next));
+      if (!next && networkOnline) {
+        // Trigger sync when manually toggling back online
+        setTimeout(() => syncPendingBills(), 100);
+      }
+      return next;
+    });
+  };
 
   const [cachedCatalogue, setCachedCatalogue] = useState<{
     categories: Category[];
@@ -70,17 +89,25 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }>(() => {
     try {
       const saved = localStorage.getItem('shopbill_cached_catalogue');
-      return saved
-        ? JSON.parse(saved)
-        : {
-            categories: [],
-            products: [],
-            customers: [],
-            units: [],
-            tax_rates: [],
-            invoice_setting: null,
-            last_synced_at: null,
-          };
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.products && parsed.products.length > 0) {
+          return parsed;
+        }
+      }
+      // Fallback: merge individually cached products, categories, customers
+      const prods = JSON.parse(localStorage.getItem('shopbill_cached_products') || '[]');
+      const cats = JSON.parse(localStorage.getItem('shopbill_cached_categories') || '[]');
+      const custs = JSON.parse(localStorage.getItem('shopbill_cached_customers') || '[]');
+      return {
+        categories: cats,
+        products: prods,
+        customers: custs,
+        units: [],
+        tax_rates: [],
+        invoice_setting: null,
+        last_synced_at: null,
+      };
     } catch {
       return {
         categories: [],
@@ -97,22 +124,29 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Track online / offline events
   useEffect(() => {
     const handleOnline = () => {
-      setIsOnline(true);
-      // Auto-trigger sync when regaining connectivity
-      syncPendingBills();
+      setNetworkOnline(true);
+      if (!isManualOffline) {
+        syncPendingBills();
+        refreshLocalCatalogue();
+      }
     };
     const handleOffline = () => {
-      setIsOnline(false);
+      setNetworkOnline(false);
     };
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
+    // Initial sync & cache refresh if online
+    if (navigator.onLine && !isManualOffline) {
+      refreshLocalCatalogue();
+    }
+
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [pendingBills]);
+  }, [isManualOffline]);
 
   // Persist pending bills
   useEffect(() => {
@@ -121,7 +155,7 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Refresh catalogue cache
   const refreshLocalCatalogue = async () => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || isManualOffline) return;
     try {
       const res = await syncApi.pullCatalogue();
       const updated = {
@@ -135,6 +169,17 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
       };
       setCachedCatalogue(updated);
       localStorage.setItem('shopbill_cached_catalogue', JSON.stringify(updated));
+
+      // Also persist individual caches for fast offline lookup
+      if (updated.products?.length) {
+        localStorage.setItem('shopbill_cached_products', JSON.stringify(updated.products));
+      }
+      if (updated.categories?.length) {
+        localStorage.setItem('shopbill_cached_categories', JSON.stringify(updated.categories));
+      }
+      if (updated.customers?.length) {
+        localStorage.setItem('shopbill_cached_customers', JSON.stringify(updated.customers));
+      }
     } catch (e) {
       console.warn('Could not refresh local catalogue snapshot:', e);
     }
@@ -142,21 +187,43 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Sync pending bills to central database
   const syncPendingBills = async (): Promise<{ success: boolean; syncedCount: number; message: string }> => {
-    if (pendingBills.length === 0) {
+    const billsToSync = JSON.parse(localStorage.getItem('shopbill_pending_bills') || '[]');
+    if (billsToSync.length === 0) {
       return { success: true, syncedCount: 0, message: 'No offline bills pending sync.' };
     }
-    if (!navigator.onLine) {
+    if (!navigator.onLine || isManualOffline) {
       return { success: false, syncedCount: 0, message: 'You are currently offline. Connect to sync.' };
     }
 
     setIsSyncing(true);
     try {
-      const res = await syncApi.pushBills(pendingBills);
+      const res = await syncApi.pushBills(billsToSync);
       const syncedCount = res.data.synced_count || 0;
+      const syncedList = res.data.synced || [];
 
       // Clear synced bills from queue
       setPendingBills([]);
       localStorage.removeItem('shopbill_pending_bills');
+
+      // Update cached invoices history with real server invoice numbers
+      try {
+        const cachedInvoices = JSON.parse(localStorage.getItem('shopbill_cached_invoices') || '[]');
+        const updatedInvoices = cachedInvoices.map((inv: any) => {
+          const match = syncedList.find((s: any) => s.sync_id === inv.sync_id);
+          if (match) {
+            return {
+              ...inv,
+              id: match.invoice_id,
+              invoice_number: match.invoice_number,
+              is_offline: false,
+              is_synced: true,
+            };
+          }
+          return inv;
+        });
+        localStorage.setItem('shopbill_cached_invoices', JSON.stringify(updatedInvoices));
+        window.dispatchEvent(new CustomEvent('shopbill_bills_synced'));
+      } catch {}
 
       // Refresh local catalogue
       await refreshLocalCatalogue();
@@ -188,9 +255,11 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setPendingBills((prev) => [...prev, offlineBill]);
 
-    // Return mock invoice for immediate preview & receipt printing
-    const offlineInvNumber = (cachedCatalogue.invoice_setting?.invoice_prefix || 'SB-OFF-') + Math.floor(1000 + Math.random() * 9000);
-    return {
+    // Return realistic mock invoice for immediate preview & receipt printing
+    const prefix = cachedCatalogue.invoice_setting?.invoice_prefix || 'SB-';
+    const offlineInvNumber = `${prefix}OFF-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const mockInvoice: any = {
       id: Date.now(),
       invoice_number: offlineInvNumber,
       invoice_date: offlineBill.invoice_date,
@@ -209,18 +278,28 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
       amount_paid: offlineBill.amount_paid,
       balance_due: Math.max(0, offlineBill.final_amount - offlineBill.amount_paid),
       payment_method: offlineBill.payment_method,
-      customer_name: offlineBill.customer_name,
-      customer_phone: offlineBill.customer_phone,
+      customer_name: offlineBill.customer_name || 'Walk-in Customer',
+      customer_phone: offlineBill.customer_phone || null,
       items: offlineBill.items,
       is_offline: true,
       sync_id: syncId,
+      status: 'completed',
     };
+
+    // Save to local invoices list so Invoice History shows this offline bill immediately
+    try {
+      const cachedInvoices = JSON.parse(localStorage.getItem('shopbill_cached_invoices') || '[]');
+      localStorage.setItem('shopbill_cached_invoices', JSON.stringify([mockInvoice, ...cachedInvoices]));
+    } catch {}
+
+    return mockInvoice;
   };
 
   return (
     <OfflineContext.Provider
       value={{
         isOnline,
+        isManualOffline,
         isSyncing,
         pendingBillsCount: pendingBills.length,
         pendingBills,
@@ -228,6 +307,7 @@ export const OfflineProvider: React.FC<{ children: React.ReactNode }> = ({ child
         saveOfflineInvoice,
         syncNow: syncPendingBills,
         refreshLocalCatalogue,
+        toggleOfflineMode,
       }}
     >
       {children}

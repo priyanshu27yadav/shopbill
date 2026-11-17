@@ -71,15 +71,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('shopbill_active_shop_id', res.data.shop.id.toString());
         localStorage.setItem('shopbill_cached_shop', JSON.stringify(res.data.shop));
       }
-    } catch (err) {
-      console.error('Failed to authenticate session:', err);
-      localStorage.removeItem('shopbill_token');
-      localStorage.removeItem('shopbill_active_shop_id');
-      localStorage.removeItem('shopbill_cached_user');
-      localStorage.removeItem('shopbill_cached_shop');
-      setToken(null);
-      setUser(null);
-      setShop(null);
+    } catch (err: any) {
+      console.warn('Authentication session check response:', err);
+      // ONLY clear session if server explicitly returned 401 Unauthorized
+      if (err.response?.status === 401) {
+        localStorage.removeItem('shopbill_token');
+        localStorage.removeItem('shopbill_active_shop_id');
+        localStorage.removeItem('shopbill_cached_user');
+        localStorage.removeItem('shopbill_cached_shop');
+        setToken(null);
+        setUser(null);
+        setShop(null);
+      } else {
+        // Network offline, timeout, or server unreachable: Preserve offline shopkeeper session!
+        console.info('Operating in offline session mode using cached credentials.');
+      }
     } finally {
       setLoading(false);
     }

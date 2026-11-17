@@ -19,7 +19,7 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ sidebarOpen, onToggleSidebar }) => {
-  const { isOnline, isSyncing, pendingBillsCount, syncNow } = useOffline();
+  const { isOnline, isManualOffline, isSyncing, pendingBillsCount, syncNow, toggleOfflineMode } = useOffline();
   const { shop } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const navigate = useNavigate();
@@ -132,23 +132,34 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, onToggleSidebar }) 
 
         {/* Offline / Online Desktop Sync Status */}
         <div className="flex items-center gap-1.5">
-          {isOnline ? (
-            <div
-              title="Online - Connected to Central MySQL"
-              className="flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800/50"
-            >
-              <Wifi className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="hidden sm:inline">{t('header.online')}</span>
-            </div>
-          ) : (
-            <div
-              title="Offline - Storing bills in local SQLite database"
-              className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800/50"
-            >
-              <WifiOff className="w-3.5 h-3.5 text-amber-500" />
-              <span>{t('header.offline')}</span>
-            </div>
-          )}
+          <button
+            type="button"
+            onClick={toggleOfflineMode}
+            title={
+              isOnline
+                ? 'Online Central • Click to switch to Offline POS mode'
+                : isManualOffline
+                ? 'Manual Offline Mode • Click to connect online & auto-sync'
+                : 'Offline • Network disconnected, bills saved locally'
+            }
+            className={`flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+              isOnline
+                ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800/50'
+                : 'text-amber-800 dark:text-amber-300 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 border-amber-300 dark:border-amber-800 animate-pulse'
+            }`}
+          >
+            {isOnline ? (
+              <>
+                <Wifi className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="hidden sm:inline">{t('header.online')}</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-3.5 h-3.5 text-amber-600" />
+                <span>{isManualOffline ? 'Offline (Test)' : t('header.offline')}</span>
+              </>
+            )}
+          </button>
 
           {pendingBillsCount > 0 && (
             <button

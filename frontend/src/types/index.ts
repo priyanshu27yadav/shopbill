@@ -145,6 +145,7 @@ export interface Invoice {
   cancellation_reason?: string;
   cancelled_at?: string;
   sync_id?: string;
+  is_offline?: boolean;
   items_count?: number;
   items?: InvoiceItem[];
   customer?: Customer;

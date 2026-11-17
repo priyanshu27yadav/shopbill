@@ -30,6 +30,7 @@ import {
   UserPlus,
   MapPin,
   Phone,
+  WifiOff,
 } from 'lucide-react';
 import { productApi, categoryApi, customerApi, invoiceApi, settingsApi } from '../../api';
 import { Category, Product, Customer, InvoiceItem, InvoiceSetting } from '../../types';
@@ -333,9 +334,19 @@ export const BillingScreen: React.FC = () => {
           setQrSource('dynamic');
         }
       } else {
-        setCategories(cachedCatalogue.categories || []);
-        setProducts(cachedCatalogue.products || []);
-        setCustomers(cachedCatalogue.customers || []);
+        const cats = cachedCatalogue.categories?.length
+          ? cachedCatalogue.categories
+          : JSON.parse(localStorage.getItem('shopbill_cached_categories') || '[]');
+        const prods = cachedCatalogue.products?.length
+          ? cachedCatalogue.products
+          : JSON.parse(localStorage.getItem('shopbill_cached_products') || '[]');
+        const custs = cachedCatalogue.customers?.length
+          ? cachedCatalogue.customers
+          : JSON.parse(localStorage.getItem('shopbill_cached_customers') || '[]');
+
+        setCategories(cats);
+        setProducts(prods);
+        setCustomers(custs);
         setInvoiceSettings(cachedCatalogue.invoice_setting || null);
         if (cachedCatalogue.invoice_setting?.custom_qr_url) {
           setQrSource('standee');
@@ -345,9 +356,19 @@ export const BillingScreen: React.FC = () => {
       }
     } catch (err) {
       console.warn('Using cached data due to network error:', err);
-      setCategories(cachedCatalogue.categories || []);
-      setProducts(cachedCatalogue.products || []);
-      setCustomers(cachedCatalogue.customers || []);
+      const cats = cachedCatalogue.categories?.length
+        ? cachedCatalogue.categories
+        : JSON.parse(localStorage.getItem('shopbill_cached_categories') || '[]');
+      const prods = cachedCatalogue.products?.length
+        ? cachedCatalogue.products
+        : JSON.parse(localStorage.getItem('shopbill_cached_products') || '[]');
+      const custs = cachedCatalogue.customers?.length
+        ? cachedCatalogue.customers
+        : JSON.parse(localStorage.getItem('shopbill_cached_customers') || '[]');
+
+      setCategories(cats);
+      setProducts(prods);
+      setCustomers(custs);
       setInvoiceSettings(cachedCatalogue.invoice_setting || null);
     }
   };
@@ -878,7 +899,33 @@ export const BillingScreen: React.FC = () => {
           }
         })
         .catch((err) => {
-          console.error('Background invoice sync error:', err);
+          console.warn('Network unreachable while creating bill. Saving to offline queue for auto-sync:', err);
+          saveOfflineInvoice({
+            ...payload,
+            subtotal: calculations.subtotal,
+            item_discount_total: calculations.itemDiscountTotal,
+            overall_discount_amount: calculations.overallDiscountAmount,
+            total_discount: calculations.totalDiscount,
+            taxable_amount: calculations.taxableAmount,
+            total_tax: calculations.totalTax,
+            round_off: calculations.roundOff,
+            final_amount: calculations.finalAmount,
+            items: cartItems.map((it) => ({
+              ...it,
+              subtotal: it.subtotal || (it.quantity * it.unit_price),
+              discount_amount: it.discount_amount || 0,
+              total_amount: it.total_amount || (it.quantity * it.unit_price),
+            })),
+          }).then((saved) => {
+            if (saved) {
+              setCompletedInvoice({
+                ...saved,
+                shop: shop,
+                customer_name: curCustName || 'Walk-in Customer',
+                customer_phone: curCustPhone || null,
+              });
+            }
+          });
         });
     } else {
       saveOfflineInvoice({
@@ -891,6 +938,21 @@ export const BillingScreen: React.FC = () => {
         total_tax: calculations.totalTax,
         round_off: calculations.roundOff,
         final_amount: calculations.finalAmount,
+        items: cartItems.map((it) => ({
+          ...it,
+          subtotal: it.subtotal || (it.quantity * it.unit_price),
+          discount_amount: it.discount_amount || 0,
+          total_amount: it.total_amount || (it.quantity * it.unit_price),
+        })),
+      }).then((saved) => {
+        if (saved) {
+          setCompletedInvoice({
+            ...saved,
+            shop: shop,
+            customer_name: curCustName || 'Walk-in Customer',
+            customer_phone: curCustPhone || null,
+          });
+        }
       });
     }
   };
@@ -946,6 +1008,20 @@ export const BillingScreen: React.FC = () => {
 
   return (
     <div className="h-full flex flex-col bg-slate-50 dark:bg-slate-950 overflow-hidden font-sans select-none">
+      {/* Offline Mode Alert Banner */}
+      {!isOnline && (
+        <div className="bg-amber-500/15 border-b border-amber-500/30 px-3 sm:px-4 py-1.5 flex items-center justify-between text-xs text-amber-900 dark:text-amber-200 shrink-0">
+          <div className="flex items-center gap-2">
+            <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 animate-pulse" />
+            <span className="font-bold">Offline POS Active (ऑफलाइन मोड)</span>
+            <span className="hidden sm:inline text-slate-500 dark:text-slate-400">• Bills are safely recorded in local storage and auto-sync when online.</span>
+          </div>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200">
+            Zero Internet Halt
+          </span>
+        </div>
+      )}
+
       {/* Top Header Bar: Mode Switcher & Quick Customer Input */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2.5 shrink-0">
         {/* Billing Mode Switch */}

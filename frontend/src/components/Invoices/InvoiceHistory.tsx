@@ -46,21 +46,40 @@ export const InvoiceHistory: React.FC = () => {
   useEffect(() => {
     loadInvoices();
     settingsApi.get().then((res) => setInvoiceSettings(res.data.invoice_settings)).catch(console.error);
+
+    const handleSynced = () => {
+      loadInvoices();
+    };
+    window.addEventListener('shopbill_bills_synced', handleSynced);
+    return () => {
+      window.removeEventListener('shopbill_bills_synced', handleSynced);
+    };
   }, [shop]);
 
   const loadInvoices = async () => {
     if (invoices.length === 0) setLoading(true);
     try {
       const res = await invoiceApi.list({ per_page: 50 });
-      const data = res.data.data || [];
-      setInvoices(data);
+      const serverData = res.data.data || [];
+      // Retain pending offline bills that haven't been pushed to server yet
+      const pendingBills = JSON.parse(localStorage.getItem('shopbill_pending_bills') || '[]');
+      const cached = JSON.parse(localStorage.getItem('shopbill_cached_invoices') || '[]');
+      const pendingIds = new Set(pendingBills.map((b: any) => b.sync_id));
+      const offlinePending = cached.filter((c: any) => c.is_offline && pendingIds.has(c.sync_id));
+
+      const merged = [...offlinePending, ...serverData.filter((s: any) => !pendingIds.has(s.sync_id))];
+      setInvoices(merged);
       try {
-        localStorage.setItem('shopbill_cached_invoices', JSON.stringify(data));
+        localStorage.setItem('shopbill_cached_invoices', JSON.stringify(merged));
       } catch (e) {
         // storage quota
       }
     } catch (err) {
-      console.error(err);
+      console.warn('Network unreachable, showing cached invoices:', err);
+      try {
+        const cached = JSON.parse(localStorage.getItem('shopbill_cached_invoices') || '[]');
+        if (cached.length > 0) setInvoices(cached);
+      } catch {}
     } finally {
       setLoading(false);
     }
@@ -68,6 +87,10 @@ export const InvoiceHistory: React.FC = () => {
 
   // View full invoice with all items and payments list identical to checkout bill
   const handleViewInvoice = async (inv: Invoice) => {
+    if (inv.is_offline || !navigator.onLine) {
+      setSelectedInvoice(inv);
+      return;
+    }
     setLoadingInvoiceId(inv.id);
     try {
       const res = await invoiceApi.get(inv.id);
@@ -215,9 +238,14 @@ export const InvoiceHistory: React.FC = () => {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 font-bold font-mono text-emerald-600 text-xs">
+                    <div className="flex items-center gap-1.5 font-bold font-mono text-emerald-600 text-xs flex-wrap">
                       {isRowLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                       <span>{inv.invoice_number}</span>
+                      {inv.is_offline && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                          ⚡ Offline (Pending Sync)
+                        </span>
+                      )}
                     </div>
                     <span className="text-[11px] font-mono text-slate-400">
                       {new Date(inv.invoice_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
@@ -332,9 +360,14 @@ export const InvoiceHistory: React.FC = () => {
                       }`}
                     >
                       <td className="py-3 px-4 font-bold font-mono text-emerald-600 dark:text-emerald-400 hover:underline">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {isRowLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                           <span>{inv.invoice_number}</span>
+                          {inv.is_offline && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                              ⚡ Offline
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="py-3 px-4 text-slate-500 font-mono">
@@ -394,7 +427,11 @@ export const InvoiceHistory: React.FC = () => {
                         </p>
                       </td>
                       <td className="py-3 px-4 text-center">
-                        {inv.status === 'completed' ? (
+                        {inv.is_offline ? (
+                          <span className="text-amber-700 dark:text-amber-400 font-bold flex items-center justify-center gap-1 text-[11px] bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                            <span>⚡ Pending Sync</span>
+                          </span>
+                        ) : inv.status === 'completed' ? (
                           <span className="text-emerald-600 font-semibold flex items-center justify-center gap-1">
                             <CheckCircle className="w-3.5 h-3.5" />
                             <span>Valid</span>
