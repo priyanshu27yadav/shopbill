@@ -196,20 +196,20 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-y-auto shadow-2xl flex flex-col">
           {/* Header */}
-          <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-amber-500/10 via-transparent to-rose-500/10">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+          <div className="p-3.5 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-amber-500/10 via-transparent to-rose-500/10 gap-2">
+            <div className="flex items-center gap-2.5 sm:gap-3 truncate">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
                 <RotateCcw className="w-5 h-5" />
               </div>
-              <div>
-                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white">
-                  Sales Return / Credit Note (सामान वापसी)
+              <div className="truncate">
+                <h2 className="text-sm sm:text-lg font-black text-slate-900 dark:text-white truncate">
+                  Sales Return / Credit Note (वापसी)
                 </h2>
-                <p className="text-xs text-slate-500">
-                  Select original bill, choose items to return, restock inventory, and process refund
+                <p className="text-[11px] sm:text-xs text-slate-500 truncate">
+                  Select bill, return items, and process refund
                 </p>
               </div>
             </div>
@@ -359,8 +359,8 @@ export const SalesReturnModal: React.FC<SalesReturnModalProps> = ({
                     </span>
                   </div>
 
-                  <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
-                    <table className="w-full text-left text-xs">
+                  <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-x-auto">
+                    <table className="w-full text-left text-xs min-w-[500px]">
                       <thead>
                         <tr className="bg-slate-100 dark:bg-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700">
                           <th className="py-2.5 px-3 w-10 text-center">Select</th>

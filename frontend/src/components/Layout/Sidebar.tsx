@@ -215,6 +215,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ onClose }) => {
               <NavLink
                 key={item.path}
                 to={item.path}
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth < 1024 && onClose) {
+                    onClose();
+                  }
+                }}
                 className={({ isActive }) =>
                   `flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group ${
                     isActive

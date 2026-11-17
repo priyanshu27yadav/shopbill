@@ -79,14 +79,14 @@ export const Header: React.FC<HeaderProps> = ({ sidebarOpen, onToggleSidebar }) 
         )}
 
         <div>
-          <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-            <span>{shop?.name || 'ShopBill Central'}</span>
+          <h2 className="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5 sm:gap-2">
+            <span className="truncate max-w-[120px] xs:max-w-[180px] sm:max-w-none">{shop?.name || 'ShopBill Central'}</span>
             {shop?.is_gst_registered ? (
-              <span className="text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800">
+              <span className="hidden sm:inline-block text-[10px] font-semibold bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800 shrink-0">
                 {t('header.gstin')}: {shop.gstin}
               </span>
             ) : (
-              <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 px-1.5 py-0.5 rounded">
+              <span className="hidden sm:inline-block text-[10px] font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 px-1.5 py-0.5 rounded shrink-0">
                 {t('header.non_gst')}
               </span>
             )}

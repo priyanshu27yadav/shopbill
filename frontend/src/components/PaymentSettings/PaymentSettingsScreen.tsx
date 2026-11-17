@@ -651,18 +651,111 @@ export const PaymentSettingsScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* SECTION 4: Connected Accounts List & Status Table */}
+      {/* SECTION 4: Connected Accounts List & Status: Mobile Cards & Desktop Table */}
       {data?.accounts && data.accounts.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
             <h3 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-2">
               <Landmark className="w-4 h-4 text-emerald-600" />
               <span>Configured Merchant Accounts ({data.accounts.length})</span>
             </h3>
-            <span className="text-xs text-slate-400">Multi-tenant secure isolated configuration</span>
+            <span className="text-[11px] sm:text-xs text-slate-400">Multi-tenant secure isolated configuration</span>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Mobile Card Layout (< sm) */}
+          <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800">
+            {data.accounts.map((acc) => (
+              <div key={acc.id} className="py-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-black text-sm text-slate-900 dark:text-white capitalize">
+                      {acc.provider === 'razorpay' ? 'Razorpay' : 'Cashfree'}
+                    </span>
+                    {acc.is_primary && (
+                      <span className="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                        Primary
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase ${
+                      acc.status === 'active'
+                        ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+                        : acc.status === 'under_review'
+                        ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                        : 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                    }`}
+                  >
+                    {acc.status.replace('_', ' ')}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-[10px] uppercase text-slate-400 font-bold block">Type & Env</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-medium">
+                      {acc.connection_type === 'new_onboarding' ? 'New Onboarding' : 'Linked Account'} • <span className="uppercase text-[10px] font-bold">{acc.environment}</span>
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] uppercase text-slate-400 font-bold block">KYC Status</span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                        acc.kyc_status === 'verified'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                      }`}
+                    >
+                      {acc.kyc_status === 'verified' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                      <span className="capitalize">{acc.kyc_status.replace('_', ' ')}</span>
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs pt-1">
+                  <div className="font-mono text-[11px] text-slate-500 truncate max-w-[170px]">
+                    ID: {acc.merchant_id || acc.account_id || acc.masked_app_id || 'Active MID'}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!acc.is_primary && acc.status === 'active' && (
+                      <button
+                        type="button"
+                        onClick={() => handleSetPrimary(acc.id)}
+                        disabled={actionLoading}
+                        className="px-2.5 py-1 text-xs font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 rounded-lg border border-emerald-200 dark:border-emerald-800"
+                      >
+                        Set Primary
+                      </button>
+                    )}
+                    {acc.status === 'under_review' && (
+                      <button
+                        type="button"
+                        onClick={() => handleVerifyKyc(acc.id)}
+                        disabled={actionLoading}
+                        className="px-2.5 py-1 text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/60 rounded-lg border border-amber-200 dark:border-amber-800"
+                      >
+                        Verify
+                      </button>
+                    )}
+                    {acc.status !== 'disconnected' && (
+                      <button
+                        type="button"
+                        onClick={() => handleDisconnect(acc.id, acc.provider)}
+                        disabled={actionLoading}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50"
+                        title="Disconnect account"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table Layout (>= sm) */}
+          <div className="hidden sm:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold uppercase text-slate-400 bg-slate-50 dark:bg-slate-800/50">

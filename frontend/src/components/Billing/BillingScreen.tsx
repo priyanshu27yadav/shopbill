@@ -1399,6 +1399,17 @@ export const BillingScreen: React.FC = () => {
         >
           {/* Active Bill Table */}
           <div className="flex-1 overflow-y-auto p-2 sm:p-3">
+            {/* Mobile Back-to-Catalogue quick switch */}
+            <div className="md:hidden mb-2">
+              <button
+                type="button"
+                onClick={() => setMobileTab('items')}
+                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 shadow-2xs active:scale-[0.99] transition-transform"
+              >
+                <span>&larr; Add More Items from Catalogue</span>
+              </button>
+            </div>
+
             {cartItems.length > 0 && (
               <div className="mb-2 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2">
@@ -1957,6 +1968,30 @@ export const BillingScreen: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Floating Bottom Action Bar for Mobile POS (< md) when items are added in Catalogue */}
+      {mobileTab === 'items' && cartItems.length > 0 && (
+        <div
+          onClick={() => setMobileTab('cart')}
+          className="md:hidden fixed bottom-3 left-3 right-3 z-30 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white p-3.5 rounded-2xl shadow-xl shadow-emerald-950/30 flex items-center justify-between cursor-pointer transition-all animate-in slide-in-from-bottom duration-200"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
+              <ShoppingCart className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="font-extrabold text-xs">
+                {cartItems.length} {cartItems.length === 1 ? 'item' : 'items'} in bill
+              </p>
+              <p className="text-[10px] text-emerald-100">Tap to review cart & collect payment</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 font-black text-sm">
+            <span>{currency}{calculations.finalAmount.toFixed(2)}</span>
+            <ChevronRight className="w-4 h-4" />
+          </div>
+        </div>
+      )}
 
       {/* Full-Screen Dynamic / Standee QR Code Modal with Auto-Generate Payment */}
       {showQrModal && (

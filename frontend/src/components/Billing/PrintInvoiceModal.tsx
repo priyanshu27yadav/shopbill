@@ -57,54 +57,54 @@ export const PrintInvoiceModal: React.FC<PrintInvoiceModalProps> = ({
         }`}
       >
         {/* Modal Header */}
-        <div className="no-print p-3 sm:p-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50">
-          <div className="flex items-center gap-2">
+        <div className="no-print p-3 sm:p-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 gap-2">
+          <div className="flex items-center gap-2 truncate">
             <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-            <div>
-              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight">
+            <div className="truncate">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm leading-tight truncate">
                 Tax Invoice: {invoice.invoice_number}
               </h3>
-              <p className="text-[11px] text-slate-400">Professional GST/Retail Invoice Format</p>
+              <p className="text-[10px] sm:text-[11px] text-slate-400 hidden xs:block">Professional GST/Retail Invoice</p>
             </div>
           </div>
 
           {/* Template format switch */}
-          <div className="flex items-center gap-1 bg-slate-200/80 dark:bg-slate-700/80 p-0.5 rounded-lg text-xs font-semibold">
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-slate-200/80 dark:bg-slate-700/80 p-0.5 rounded-lg text-xs font-semibold shrink-0">
             <button
               onClick={() => setTemplate('a4')}
-              className={`px-3 py-1 rounded-md text-xs transition-all ${
+              className={`px-2 sm:px-3 py-1 rounded-md text-xs transition-all ${
                 template === 'a4'
                   ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-xs font-bold'
                   : 'text-slate-600 dark:text-slate-300'
               }`}
             >
-              Standard A4 Tax Invoice
+              <span className="hidden sm:inline">Standard </span>A4
             </button>
             <button
               onClick={() => setTemplate('thermal_80mm')}
-              className={`px-2.5 py-1 rounded-md text-xs transition-all ${
+              className={`px-2 sm:px-2.5 py-1 rounded-md text-xs transition-all ${
                 template === 'thermal_80mm'
                   ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-xs font-bold'
                   : 'text-slate-600 dark:text-slate-300'
               }`}
             >
-              80mm Thermal
+              80mm<span className="hidden sm:inline"> Thermal</span>
             </button>
             <button
               onClick={() => setTemplate('thermal_58mm')}
-              className={`px-2.5 py-1 rounded-md text-xs transition-all ${
+              className={`px-2 sm:px-2.5 py-1 rounded-md text-xs transition-all ${
                 template === 'thermal_58mm'
                   ? 'bg-white dark:bg-slate-900 text-emerald-600 shadow-xs font-bold'
                   : 'text-slate-600 dark:text-slate-300'
               }`}
             >
-              58mm POS
+              58mm<span className="hidden sm:inline"> POS</span>
             </button>
           </div>
 
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
           >
             <X className="w-5 h-5" />
           </button>

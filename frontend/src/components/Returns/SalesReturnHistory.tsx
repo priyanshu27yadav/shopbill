@@ -92,41 +92,41 @@ export const SalesReturnHistory: React.FC = () => {
       </div>
 
       {/* Summary KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 flex items-center justify-center">
-            <RotateCcw className="w-6 h-6" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
+        <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 flex items-center justify-center shrink-0">
+            <RotateCcw className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <p className="text-xs text-slate-400 font-bold uppercase">Total Return Vouchers</p>
-            <p className="text-xl font-black font-mono text-slate-900 dark:text-white">
+            <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase">Return Vouchers</p>
+            <p className="text-lg sm:text-xl font-black font-mono text-slate-900 dark:text-white">
               {returns.length}
             </p>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 flex items-center justify-center">
-            <TrendingDown className="w-6 h-6" />
+        <div className="bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-3">
+          <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 flex items-center justify-center shrink-0">
+            <TrendingDown className="w-5 h-5 sm:w-6 sm:h-6" />
           </div>
           <div>
-            <p className="text-xs text-slate-400 font-bold uppercase">Total Refunded Value</p>
-            <p className="text-xl font-black font-mono text-rose-600 dark:text-rose-400">
+            <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase">Refunded Value</p>
+            <p className="text-lg sm:text-xl font-black font-mono text-rose-600 dark:text-rose-400">
               {currency}{totalRefundsValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
             </p>
           </div>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="col-span-2 sm:col-span-1 bg-white dark:bg-slate-900 p-3.5 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-xs text-slate-400 font-bold uppercase">Quick Action</p>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+            <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase">Quick Action</p>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
               Need to accept returned items from bill?
             </p>
           </div>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="text-xs font-bold text-amber-600 hover:text-amber-700 underline"
+            className="text-xs font-bold text-amber-600 hover:text-amber-700 underline shrink-0 ml-2"
           >
             Create Return &rarr;
           </button>
@@ -172,9 +172,77 @@ export const SalesReturnHistory: React.FC = () => {
         </form>
       </div>
 
-      {/* Returns List Table */}
+      {/* Returns List: Responsive Mobile Cards & Desktop Table */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Cards View (< sm) */}
+        <div className="sm:hidden divide-y divide-slate-100 dark:divide-slate-800">
+          {loading ? (
+            <div className="py-8 text-center text-slate-400 text-xs">
+              Loading returns...
+            </div>
+          ) : returns.length === 0 ? (
+            <div className="py-10 px-4 text-center text-slate-400 text-xs">
+              No sales returns recorded yet. Tap "New Sales Return" to process an item return.
+            </div>
+          ) : (
+            returns.map((ret) => (
+              <div
+                key={ret.id}
+                onClick={() => setSelectedReturnForPrint(ret)}
+                className="p-3.5 space-y-2.5 active:bg-slate-50 dark:active:bg-slate-800/60 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-amber-600 text-xs">
+                    {ret.return_number}
+                  </span>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {new Date(ret.return_date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </span>
+                </div>
+
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="font-extrabold text-xs text-slate-800 dark:text-slate-100">
+                      {ret.customer_name || 'Walk-in Customer'}
+                    </p>
+                    {ret.customer_phone && (
+                      <p className="text-[10px] text-slate-400 font-mono">📞 {ret.customer_phone}</p>
+                    )}
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Against Bill: <span className="font-mono font-bold text-slate-700 dark:text-slate-300">{ret.original_invoice_number}</span>
+                    </p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
+                    {ret.refund_method.replace('_', ' ')}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/60">
+                  <div>
+                    <p className="text-[10px] uppercase font-bold text-slate-400">Refund Amount</p>
+                    <p className="text-base font-black font-mono text-rose-600 dark:text-rose-400">
+                      {currency}{Number(ret.refund_amount).toFixed(2)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedReturnForPrint(ret);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 hover:bg-emerald-100"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>View Note</span>
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Desktop Table View (>= sm) */}
+        <div className="hidden sm:block overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-slate-50 dark:bg-slate-800/60 text-[11px] font-bold text-slate-500 uppercase border-b border-slate-200 dark:border-slate-800">
